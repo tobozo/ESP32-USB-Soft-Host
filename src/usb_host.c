@@ -1371,7 +1371,7 @@ void printState()
     pcurrent->ufPrintDesc &= ~(uint32_t)16;
 
     if( printCB ) {
-      printCB( pcurrent->Resp0, pcurrent->R0Bytes );
+      printCB( pcurrent->Resp1, pcurrent->R1Bytes );
     } else {
       printf("in1 :");
       for(int k=0;k<pcurrent->R1Bytes;k++) {
