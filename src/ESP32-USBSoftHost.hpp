@@ -74,7 +74,7 @@ static void usb_init( usb_pins_config_t pconf )
   config.counter_dir = TIMER_COUNT_UP;
   config.counter_en  = TIMER_PAUSE;
   config.alarm_en    = TIMER_ALARM_EN;
-  config.auto_reload = 1;
+  config.auto_reload = (timer_autoreload_t) 1;
 
   timer_queue = xQueueCreate(10, sizeof(timer_event_t));
 
