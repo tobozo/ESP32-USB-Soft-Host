@@ -5,55 +5,13 @@
 #define BLINK_GPIO 2
 #endif
 
-
+// include the modified version from Dmitry Samsonov
 extern "C" {
-  #include <usb_host.h>
+  #include "usb_host.h"
 }
 
 
-typedef struct
-{
-    int type;  // the type of timer's event
-    int timer_group;
-    int timer_idx;
-    uint64_t timer_counter_value;
-} timer_event_t;
-
-xQueueHandle timer_queue;
-
-static void IRAM_ATTR timer_group0_isr(void *para)
-{
-  int timer_idx = (int) para;
-  // Retrieve the interrupt status and the counter value from the timer that reported the interrupt
-  uint32_t intr_status = TIMERG0.int_st_timers.val;
-  TIMERG0.hw_timer[timer_idx].update = 1;
-  uint64_t timer_counter_value = ((uint64_t) TIMERG0.hw_timer[timer_idx].cnt_high) << 32 | TIMERG0.hw_timer[timer_idx].cnt_low;
-  /* Prepare basic event data that will be then sent back to the main program task */
-  timer_event_t evt;
-  evt.timer_group = 0;
-  evt.timer_idx = timer_idx;
-  evt.timer_counter_value = timer_counter_value;
-  // process USB signal
-  usb_process();
-  // Clear the interrupt and update the alarm time for the timer with without reload
-  if ((intr_status & BIT(timer_idx)) && timer_idx == TIMER_0) {
-    evt.type = 1; // no reload
-    TIMERG0.int_clr_timers.t0 = 1;
-    timer_counter_value += (uint64_t) (TIMER_INTERVAL0_SEC * TIMER_SCALE);
-    TIMERG0.hw_timer[timer_idx].alarm_high = (uint32_t) (timer_counter_value >> 32);
-    TIMERG0.hw_timer[timer_idx].alarm_low = (uint32_t) timer_counter_value;
-  }/* else if ((intr_status & BIT(timer_idx)) && timer_idx == TIMER_1) {
-    evt.type = 1; // reload
-    TIMERG0.int_clr_timers.t1 = 1;
-  } else {
-    evt.type = -1; // not supported even type
-  }*/
-  // After the alarm has been triggered we need enable it again, so it is triggered the next time
-  TIMERG0.hw_timer[timer_idx].config.alarm_en = TIMER_ALARM_EN;
-  // Now just send the event data back to the main program task
-  xQueueSendFromISR(timer_queue, &evt, NULL);
-}
-
+// pins configuration
 typedef struct
 {
   int dp0;
@@ -65,16 +23,84 @@ typedef struct
   int dp3;
   int dm3;
 } usb_pins_config_t;
+// task ticker
+typedef void (*ontick_t)();
 
 
-static void usb_init( usb_pins_config_t pconf )
+static void Default_USB_DetectCB( uint8_t usbNum, void * dev )
 {
+  sDevDesc *device = (sDevDesc*)dev;
+  printf("New device detected on USB#%d\n", usbNum);
+  printf("desc.bcdUSB             = 0x%04x\n", device->bcdUSB);
+  printf("desc.bDeviceClass       = 0x%02x\n", device->bDeviceClass);
+  printf("desc.bDeviceSubClass    = 0x%02x\n", device->bDeviceSubClass);
+  printf("desc.bDeviceProtocol    = 0x%02x\n", device->bDeviceProtocol);
+  printf("desc.bMaxPacketSize0    = 0x%02x\n", device->bMaxPacketSize0);
+  printf("desc.idVendor           = 0x%04x\n", device->idVendor);
+  printf("desc.idProduct          = 0x%04x\n", device->idProduct);
+  printf("desc.bcdDevice          = 0x%04x\n", device->bcdDevice);
+  printf("desc.iManufacturer      = 0x%02x\n", device->iManufacturer);
+  printf("desc.iSerialNumber      = 0x%02x\n", device->iSerialNumber);
+  printf("desc.bNumConfigurations = 0x%02x\n", device->bNumConfigurations);
+  // if( device->idProduct == mySupportedIdProduct && device->idVendor == mySupportedVendor ) {
+  //   myListenUSBPort = usbNum;
+  // }
+}
+
+static void Default_USB_DataCB(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len)
+{
+  // if( myListenUSBPort != usbNum ) return;
+  printf("in: ");
+  for(int k=0;k<data_len;k++) {
+    printf("0x%02x ", data[k] );
+  }
+  printf("\n");
+}
+
+
+
+
+class USB_SOFT_HOST
+{
+  public:
+    bool init( usb_pins_config_t pconf, ondetectcb_t detectCB = Default_USB_DetectCB, printcb_t onDataCB = Default_USB_DataCB, ontick_t onTickCB = nullptr );
+    void setPrintCb( printcb_t onDataCB );
+    void setOndetectCb( ondetectcb_t onDetectCB );
+    void setTaskTicker( ontick_t onTickCB );
+    void setActivityBlinker( onledblinkcb_t onActivityCB );
+  private:
+    bool inited = false;
+    bool _init( usb_pins_config_t pconf );
+    static void (*ticker)();
+    static void TimerTask(void *arg);
+};
+
+
+
+bool USB_SOFT_HOST::init( usb_pins_config_t pconf, ondetectcb_t onDetectCB, printcb_t onDataCB, ontick_t onTickCB )
+{
+  setOndetectCb( onDetectCB );
+  setPrintCb( onDataCB );
+  USB_SOFT_HOST::setTaskTicker( onTickCB );
+  if( _init( pconf ) ) {
+    xTaskCreatePinnedToCore(USB_SOFT_HOST::TimerTask, "USB Soft Host Timer Task", 4096, NULL, 5, NULL, 1);
+    return true;
+  }
+  return false;
+}
+
+
+
+bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
+{
+  if( inited ) return false;
+
   timer_config_t config;
   config.divider     = TIMER_DIVIDER;
   config.counter_dir = TIMER_COUNT_UP;
   config.counter_en  = TIMER_PAUSE;
   config.alarm_en    = TIMER_ALARM_EN;
-  config.auto_reload = 1;
+  config.auto_reload = (timer_autoreload_t) 1; // fix for ¬invalid conversion from 'int' to 'timer_autoreload_t'¬ thanks rudi ;-)
 
   timer_queue = xQueueCreate(10, sizeof(timer_event_t));
 
@@ -94,7 +120,59 @@ static void usb_init( usb_pins_config_t pconf )
   timer_enable_intr(TIMER_GROUP_0, TIMER_0);
   timer_isr_register(TIMER_GROUP_0, TIMER_0, timer_group0_isr, (void *) TIMER_0, ESP_INTR_FLAG_IRAM, NULL);
   timer_start(TIMER_GROUP_0, TIMER_0);
+
+  inited = true;
+
+  return true;
 }
+
+
+
+void USB_SOFT_HOST::setPrintCb( printcb_t onDataCB )
+{
+  set_print_cb( onDataCB );
+}
+
+
+
+void USB_SOFT_HOST::setOndetectCb( ondetectcb_t onDetectCB )
+{
+  set_ondetect_cb( onDetectCB );
+}
+
+
+
+void USB_SOFT_HOST::setTaskTicker( ontick_t onTickCB )
+{
+  USB_SOFT_HOST::ticker = onTickCB;
+}
+
+
+
+void USB_SOFT_HOST::setActivityBlinker( onledblinkcb_t onActivityCB )
+{
+  set_onled_blink_cb( onActivityCB );
+}
+
+
+
+void (*USB_SOFT_HOST::ticker)() = nullptr;
+
+
+
+void USB_SOFT_HOST::TimerTask(void *arg)
+{
+  while (1) {
+    timer_event_t evt;
+    xQueueReceive(timer_queue, &evt, portMAX_DELAY);
+    printState();
+    if( ticker ) ticker();
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+  }
+}
+
+
+USB_SOFT_HOST USH;
 
 
 #endif

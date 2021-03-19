@@ -19,6 +19,15 @@
 *  Copyright (C) 2021  Dmitry Samsonov *
 ********************************/
 
+/*\
+   Last changes by tobozo (march 2021):
+   - Arduino IDE compliance (mostly code regression to esp-idf 3.x)
+   - Added callbacks (data and device detection)
+   -
+
+\*/
+
+
 #include "usb_host.h"
 
 // Arduino IDE complains about volatile at init, but we don't care
@@ -778,29 +787,29 @@ void timerCallBack()
          }
        }
   } else if(current->cb_Cmd==CB_4) {
-     SOF();
-     pu_Addr(T_OUT,current->rq.addr,current->rq.eop);
-     //reB();
-     pu_MSB(T_START,8);
-     pu_MSB(T_DATA1,8);//setup
-     for(int k=0;k<current->transmitL1Bytes;k++) {
-       pu_LSB(current->transmitL1[k],8);
-     }
-     pu_MSB(cal16(),16);
-     repack();
-     sendRecieveNParse();
-     pu_Addr(T_IN,current->rq.addr,current->rq.eop);
-        //setup
-     sendRecieveNParse();
-     ACK();
-    current->cb_Cmd=CB_TICK;
-     current->bComplete = 1;
-  } else if(current->cb_Cmd==CB_5) {
-     SOF();
-     pu_Addr(current->rq.cmd,current->rq.addr,current->rq.eop);
-     pu_Cmd(current->rq.dataCmd, current->rq.bmRequestType, current->rq.bmRequest,current->rq.wValue, current->rq.wIndex, current->rq.wLen);
+    SOF();
+    pu_Addr(T_OUT,current->rq.addr,current->rq.eop);
+    //reB();
+    pu_MSB(T_START,8);
+    pu_MSB(T_DATA1,8);//setup
+    for(int k=0;k<current->transmitL1Bytes;k++) {
+      pu_LSB(current->transmitL1[k],8);
+    }
+    pu_MSB(cal16(),16);
+    repack();
     sendRecieveNParse();
-     //int res = sendRecieve(current->asckedReceiveBytes>8?8:current->asckedReceiveBytes);
+    pu_Addr(T_IN,current->rq.addr,current->rq.eop);
+    //setup
+    sendRecieveNParse();
+    ACK();
+    current->cb_Cmd=CB_TICK;
+    current->bComplete = 1;
+  } else if(current->cb_Cmd==CB_5) {
+    SOF();
+    pu_Addr(current->rq.cmd,current->rq.addr,current->rq.eop);
+    pu_Cmd(current->rq.dataCmd, current->rq.bmRequestType, current->rq.bmRequest,current->rq.wValue, current->rq.wIndex, current->rq.wLen);
+    sendRecieveNParse();
+    //int res = sendRecieve(current->asckedReceiveBytes>8?8:current->asckedReceiveBytes);
     int res = parse_received_NRZI_buffer();
     if(res==T_ACK) {
       current->cb_Cmd = CB_6;
@@ -808,19 +817,19 @@ void timerCallBack()
       current->numb_reps_errors_allowed = 4;
       current->counterAck ++;
       return ;
-     } else {
+    } else {
       //SOF();
-       current->counterNAck ++;
-       current->numb_reps_errors_allowed--;
-       if(current->numb_reps_errors_allowed>0) {
+      current->counterNAck ++;
+      current->numb_reps_errors_allowed--;
+      if(current->numb_reps_errors_allowed>0) {
         // current->cb_Cmd = CB_TICK;
-         current->acc_decoded_resp_counter = 0;
-         return ;
-       } else {
-         current->cb_Cmd = CB_TICK;
-         current->bComplete       =  1;
-       }
-     }
+        current->acc_decoded_resp_counter = 0;
+        return ;
+      } else {
+        current->cb_Cmd = CB_TICK;
+        current->bComplete       =  1;
+      }
+    }
   } else if(current->cb_Cmd==CB_6) {
     SOF();
     pu_Addr(T_IN,current->rq.addr,current->rq.eop);
@@ -1032,6 +1041,31 @@ void RequestIn(uint8_t cmd,   uint8_t addr,uint8_t eop,uint16_t waitForBytes)
 
 
 
+void (*printDataCB)(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len) = NULL;
+
+void set_print_cb( printcb_t cb )
+{
+  printDataCB = cb;
+};
+
+
+
+void (*onDetectCB)(uint8_t usbNum, void *device) = NULL;
+
+void set_ondetect_cb( ondetectcb_t cb )
+{
+  onDetectCB = cb;
+}
+
+void (*onLedBlinkCB)(int on_off) = NULL;
+
+void set_onled_blink_cb( onledblinkcb_t cb )
+{
+  onLedBlinkCB = cb;
+}
+
+
+
 void fsm_Mashine()
 {
   if(!current->bComplete) return;
@@ -1128,7 +1162,7 @@ void fsm_Mashine()
     //}
     current->fsm_state    = 100;
    } else if(current->fsm_state==100) {
-     led(0);
+     if( onLedBlinkCB ) onLedBlinkCB(0);
      RequestIn(T_IN,  ASSIGNED_USB_ADDRESS,1,8);
      current->fsm_state    = 101;
    } else if(current->fsm_state==101) {
@@ -1136,7 +1170,7 @@ void fsm_Mashine()
       current->ufPrintDesc |= 8;
       current->R0Bytes= current->acc_decoded_resp_counter;
       memcpy(current->Resp0,current->acc_decoded_resp,current->R0Bytes);
-      led(1);
+      if( onLedBlinkCB ) onLedBlinkCB(1);
       //gpio_set_level(B23_GPIO, 1);
     }
     //~ RequestIn(T_IN,  ASSIGNED_USB_ADDRESS,2,8);
@@ -1249,7 +1283,7 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
     }
     current->isValid = 0;
     if(checkPins(current->DP,current->DM)) {
-      printf("pins %d %d is OK!\n",current->DP,current->DM);
+      printf("USB#%d (pins %d %d) is OK!\n", k, current->DP, current->DM );
       current->selfNum = k;
       current->in_data_flip_flop       = 0;
       current->bComplete  = 1;
@@ -1270,7 +1304,11 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
       gpio_pulldown_en(current->DM);
       current->isValid = 1;
     } else {
-      printf("pins %d %d is Errors !\n",current->DP,current->DM);
+      if( current->DP == -1 && current->DM == -1 ) {
+        printf("USB#%d is disabled by user configuration\n", k);
+      } else {
+        printf("USB#%d (pins %d %d) has errors and will be disabled !\n", k, current->DP, current->DM );
+      }
     }
   }
 }
@@ -1290,16 +1328,6 @@ void usb_process()
 }
 
 
-void (*printCB)(uint8_t* data, uint8_t data_len) = NULL;
-
-void setPrintCb( printcb_t blah )
-{
-  printCB = blah;
-};
-
-
-
-
 void printState()
 {
   static int cntl = 0;
@@ -1308,13 +1336,21 @@ void printState()
   sUsbContStruct * pcurrent = &current_usb[ref];
   if(!pcurrent->isValid) return ;
   if((cntl%200)<NUM_USB) {
-    printf("USB%d: Ack = %d Nack = %d %02x pcurrent->cb_Cmd = %d  state = %d epCount = %d",cntl%NUM_USB,pcurrent->counterAck,pcurrent->counterNAck,pcurrent->wires_last_state,pcurrent->cb_Cmd,pcurrent->fsm_state,pcurrent->epCount);
     #ifdef DEBUG_ALL
+    printf("USB%d: Ack = %d Nack = %d %02x pcurrent->cb_Cmd = %d  state = %d epCount = %d --",
+      cntl%NUM_USB, pcurrent->counterAck,
+      pcurrent->counterNAck,
+      pcurrent->wires_last_state,
+      pcurrent->cb_Cmd,
+      pcurrent->fsm_state,
+      pcurrent->epCount
+    );
     for(int k=0;k<20;k++) {
       printf("%04x ", debug_buff[k]);
     }
-    #endif
     printf("\n");
+    #endif
+
   }
   //~ for(int k=0;k<0x14;k++)
   //~ {
@@ -1330,19 +1366,25 @@ void printState()
   //~ printf("\n");
   if(pcurrent->ufPrintDesc&1) {
     pcurrent->ufPrintDesc &= ~(uint32_t)1;
-    //~ printf("desc.bcdUSB          = %02x\n",pcurrent->desc.bcdUSB);
-    //~ printf("desc.bDeviceClass    = %02x\n",pcurrent->desc.bDeviceClass);
-    //~ printf("desc.bDeviceSubClass = %02x\n",pcurrent->desc.bDeviceSubClass);
-    //~ printf("desc.bDeviceProtocol = %02x\n",pcurrent->desc.bDeviceProtocol);
-    //~ printf("desc.bMaxPacketSize0 = %02x\n",pcurrent->desc.bMaxPacketSize0);
-    //~ printf("desc.idVendor        = %02x\n",pcurrent->desc.idVendor);
-    //~ printf("desc.idProduct       = %02x\n",pcurrent->desc.idProduct);
-    printf("desc.bcdDevice       = %02x\n",pcurrent->desc.bcdDevice);
-    printf("desc.iManufacturer   = %02x\n",pcurrent->desc.iManufacturer);
-    printf("desc.iProduct        = %02x\n",pcurrent->desc.iProduct);
-    printf("desc.iSerialNumber   = %02x\n",pcurrent->desc.iSerialNumber);
-    printf("desc.bNumConfigurations = %02x\n",pcurrent->desc.bNumConfigurations);
+    if( onDetectCB ) {
+      onDetectCB( ref, (void*)&pcurrent->desc );
+    } else {
+      //~ printf("desc.bcdUSB          = %02x\n",pcurrent->desc.bcdUSB);
+      //~ printf("desc.bDeviceClass    = %02x\n",pcurrent->desc.bDeviceClass);
+      //~ printf("desc.bDeviceSubClass = %02x\n",pcurrent->desc.bDeviceSubClass);
+      //~ printf("desc.bDeviceProtocol = %02x\n",pcurrent->desc.bDeviceProtocol);
+      //~ printf("desc.bMaxPacketSize0 = %02x\n",pcurrent->desc.bMaxPacketSize0);
+      //~ printf("desc.idVendor        = %02x\n",pcurrent->desc.idVendor);
+      //~ printf("desc.idProduct       = %02x\n",pcurrent->desc.idProduct);
+      printf("desc.bcdDevice       = %02x\n",pcurrent->desc.bcdDevice);
+      printf("desc.iManufacturer   = %02x\n",pcurrent->desc.iManufacturer);
+      printf("desc.iProduct        = %02x\n",pcurrent->desc.iProduct);
+      printf("desc.iSerialNumber   = %02x\n",pcurrent->desc.iSerialNumber);
+      printf("desc.bNumConfigurations = %02x\n",pcurrent->desc.bNumConfigurations);
+    }
+
   }
+
   if(pcurrent->ufPrintDesc&2) {
     pcurrent->ufPrintDesc &= ~(uint32_t)2;
     //~ printf("cfg.bLength         = %02x\n",cfg.bLength);
@@ -1354,11 +1396,12 @@ void printState()
     //~ printf("cfg.bAttr           = %02x\n",cfg.bAttr);
     //~ printf("cfg.bMaxPower       = %d\n",cfg.bMaxPower);
   }
+
   if(pcurrent->ufPrintDesc&8) {
     pcurrent->ufPrintDesc &= ~(uint32_t)8;
 
-    if( printCB ) {
-      printCB( pcurrent->Resp0, pcurrent->R0Bytes );
+    if( printDataCB ) {
+      printDataCB( ref, 8, pcurrent->Resp0, pcurrent->R0Bytes );
     } else {
       printf("in0 :");
       for(int k=0;k<pcurrent->R0Bytes;k++) {
@@ -1367,11 +1410,12 @@ void printState()
       printf("\n");
     }
   }
+
   if(pcurrent->ufPrintDesc&16) {
     pcurrent->ufPrintDesc &= ~(uint32_t)16;
 
-    if( printCB ) {
-      printCB( pcurrent->Resp1, pcurrent->R1Bytes );
+    if( printDataCB ) {
+      printDataCB( ref, 16, pcurrent->Resp1, pcurrent->R1Bytes );
     } else {
       printf("in1 :");
       for(int k=0;k<pcurrent->R1Bytes;k++) {
@@ -1394,7 +1438,9 @@ void printState()
     #define STDCLASS        0x00
     #define HIDCLASS        0x03
     #define HUBCLASS     0x09      /* bDeviceClass, bInterfaceClass */
+    #ifdef DEBUG_ALL
     printf("clear epCount %d self = %d\n",pcurrent->epCount,pcurrent->selfNum);
+    #endif
     pcurrent->epCount     = 0;
     while(pos<pcurrent->descrBufferLen-2) {
       uint8_t len  =  pcurrent->descrBuffer[pos];
@@ -1404,13 +1450,12 @@ void printState()
         pos = pcurrent->descrBufferLen;
       }
       if(pos+len<=pcurrent->descrBufferLen) {
-        printf("\n");
+        //printf("\n");
         if(type == 0x2) {
           sCfgDesc cfg;
           memcpy(&cfg,&pcurrent->descrBuffer[pos],len);
           //printf("cfg.bLength         = %02x\n",cfg.bLength);
           //printf("cfg.bType           = %02x\n",cfg.bType);
-
           //~ printf("cfg.wLength         = %02x\n",cfg.wLength);
           //~ printf("cfg.bNumIntf        = %02x\n",cfg.bNumIntf);
           //~ printf("cfg.bCV             = %02x\n",cfg.bCV);
@@ -1444,15 +1489,17 @@ void printState()
           //~ printf("hid.wItemLengthL         = %02x\n",hid[i].wItemLengthL);
         } else if (type == 0x5) {
           pcurrent->epCount++;
-          printf("pcurrent->epCount = %d\n",pcurrent->epCount);
           sEPDesc epd;
           memcpy(&epd,&pcurrent->descrBuffer[pos],len);
-          //printf("epd.bLength       = %02x\n",epd.bLength);
-          //printf("epd.bType         = %02x\n",epd.bType);
+          #ifdef DEBUG_ALL
+          printf("pcurrent->epCount = %d\n",pcurrent->epCount);
+          printf("epd.bLength       = %02x\n",epd.bLength);
+          printf("epd.bType         = %02x\n",epd.bType);
           printf("epd.bEPAdd        = %02x\n",epd.bEPAdd);
           printf("epd.bAttr         = %02x\n",epd.bAttr);
           printf("epd.wPayLoad      = %02x\n",epd.wPayLoad);
           printf("epd.bInterval     = %02x\n",epd.bInterval);
+          #endif
         }
       }
       pos+=len;
