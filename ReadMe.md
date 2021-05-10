@@ -4,11 +4,11 @@ This is mainly a wrapper around the excellent work of [Dmitry Samsonov (@sdima13
 
 Some parts of the code (e.g. the timer group isr calls) have been regressed to fit esp-idf 3.3 needs.
 
-esp32 USB-LS is a pure software implementation of USB host thru general IO pins.
+This ESP32 USB-LS Soft host (:warning: LS=low speed) is a pure software implementation of USB host thru general IO pins.
 
-It supports up to 4 HID devices simultaneously.
+It supports up to 4 HID *low speed* devices simultaneously.
 
-Works on ESP32-Wroom and Wrover as long as the pins aren't shared (beware of the psram pins!), untested yet on S2, can't compile on C3.
+Tested on ESP32-Wroom/Wrover and works as long as the pins aren't shared (beware of the psram pins!), untested yet on S2, can't compile on C3.
 
 
 [![](extras/ESP32-USB-host.png)]
