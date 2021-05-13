@@ -7,8 +7,11 @@
 #include "soc/timer_group_struct.h"
 #include "driver/periph_ctrl.h"
 #include "driver/timer.h"
+#include "esp32-hal-log.h"
 
-#define DEBUG_ALL // uncomment this for verbose output
+#if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_DEBUG
+  #define DEBUG_ALL
+#endif
 #define TIMER_DIVIDER         2  //  Hardware timer clock divider
 #define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
 #define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
