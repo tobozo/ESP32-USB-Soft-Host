@@ -51,27 +51,20 @@ Known working HID devices:
 
 
 
-|      Mouse Name             | idVendor  |  idProduct | Init (Led Fire) | Mouse Events|              Comments                  |
-| --------------------------- |:--------- | :--------- | :-------------- | :---------- | :------------------------------------- |
-| LogiLink ID0062             | 0x1a2c    | 0x0042     |    10/10        |    10/10    |                                        |
-| Microsoft Intellimouse 1.1  | 0x045e    | 0x0039     |    10/10        |    10/10    |                                        |
-| A4Tech SWOP-48              | 0x093a    | 0x2510     |    10/10        |    10/10    |                                        |
-| Genius Netscroll 110X       | 0x0458    | 0x003a     |    10/10        |    10/10    |                                        |
-| ASUS Logitech M-UV55A       | 0x046d    | 0xc016     |    10/10        |    7/10     |                                        |
-| Microsoft Wheel Mouse       | 0x045e    | 0x0040     |    6/10         |    6/10     |                                        |
-| A4Tech OP-720               | 0x093a    | 0x2510     |    10/10        |    5/10     |                                        |
-| Logitech M-BT83             | 0x046d    | 0xc03e     |    5/10         |    5/10     |                                        |
-| Logitech B100               | 0x046d    | 0xc077     |    10/10        |    3/10     |                                        |
-| Oklick-305m                 | n/a       | n/a        |    10/10        |    0/10     |                                        |
-| Exegate SH-9018             | n/a       | n/a        |    10/10        |    0/10     | Device reaction looks like Oklick-305m |
-| A4Tech X-7???               | 0x09da    | 0x8090     |    0/10         |    0/10     | Gaming mouse w/o label                 |
-
-
-| ESP32   | 1.0     |  1.0.5    |  1.0.5 |  1.0    |  1.0  |
-| ESP8266 | builtin |  0.1.0    |  0.1.0 |  n/a    |  n/a  |
-
-
-
+| Status    | Brand         | Model Name       | idVendor  |  idProduct | Init  | Events |              Comments                  |
+|:--------- | :------------ | :--------------- |:--------- | :--------- | :-----| :----- | :------------------------------------- |
+|:smile:    | LogiLink      | ID0062           | 0x1a2c    | 0x0042     | 10/10 | 10/10  | Low cost 3 buttons mouse               |
+|:smile:    | Microsoft     | Intellimouse 1.1 | 0x045e    | 0x0039     | 10/10 | 10/10  |                                        |
+|:smile:    | A4Tech        | SWOP-48          | 0x093a    | 0x2510     | 10/10 | 10/10  |                                        |
+|:smile:    | Genius        | Netscroll 110X   | 0x0458    | 0x003a     | 10/10 | 10/10  |                                        |
+|:no_mouth: | Logitech      | M-UV55A          | 0x046d    | 0xc016     | 10/10 | 7/10   | Brand is advertised as ASUS/Logitech   |
+|:no_mouth: | Microsoft     | Wheel Mouse      | 0x045e    | 0x0040     | 6/10  | 6/10   |                                        |
+|:no_mouth: | A4Tech        | OP-720           | 0x093a    | 0x2510     | 10/10 | 5/10   |                                        |
+|:cold_face:| Logitech      | M-BT83           | 0x046d    | 0xc03e     | 5/10  | 5/10   |                                        |
+|:cold_face:| Logitech      | B100             | 0x046d    | 0xc077     | 10/10 | 3/10   |                                        |
+|:skull:    | Oklick        | 305m             | n/a       | n/a        | 10/10 | 0/10   |                                        |
+|:skull:    | Exegate       | SH-9018          | n/a       | n/a        | 10/10 | 0/10   | Device reaction looks like Oklick-305m |
+|:skull:    | A4Tech        | X-7???           | 0x09da    | 0x8090     | 0/10  | 0/10   | Gaming mouse w/o label                 |
 
 
 
