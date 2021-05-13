@@ -35,8 +35,43 @@ Known working HID devices:
 
 - USB Keyboards: any, but consider powering externally it has backlights and/or other gadgets
 - USB Mice:
-  - LogiLink ID0062 (idVendor=0x1a2c, idProduct=0x0042): works every time
+  - LogiLink ID0062 (idVendor=0x1a2c, idProduct=0x0042): Data recieves - 10/10 , led fired - 10/10;
+  - Microsoft Intellimouse 1.1 (idVendor=0x045e, idProduct=0x0039): Data recieves - 10/10, led fired - 10/10
+  - Microsoft Wheel Mouse (idVendor = 0x045e, idProduct = 0x0040): Data recieves - 6/10, led fired - 6/10;
+  - ASUS Logitech M-UV55A: Data recieves - 7/10 , led fired (complete init?) - 10/10
+  - ASUS (Logitech) Optical USB Black #M-UV55A (idVendor = 0x046d, idProduct = 0xc016): Data recieves - 7/10 , led fired (complete init?) - 10/10;
+  - A4Tech SWOP-48 (idVendor = 0x093a. idProduct = 0x2510): Data recieves - 10/10 , led fired - 10/10
+  - Genius Netscroll 110X (idVendor = 0x0458, idProduct = 0x003a): Data recieves - 10/10, led fired - 10/10
   - Logitech B100 (idVendor=0x046d, idProduct=0xc077): partial detection, may need several resets before events are fired
+  - Logitech M-BT83 (idVendor = 0x046d, idProduct = 0xc03e), Data recieves - 5/10, led fired - 5/10;
+  - A4Tech X-7??? , gaming mouse w/o label [ VID_09DA&PID_8090&REV_0606&MI_00 ]. Not recognized by driver, no any info in the Serial Monitor exist.
+  - A4Tech OP-720 (idVendor = 0x093a, idProduct = 0x2510): Data recieves - 5/10, led fired - 10/10;
+  - Oklick-305m: Data recieves - 0/10 (sic!), led fired - 10/10 (i guess it always turned on, independing of init result )
+  - Exegate SH-9018: Data recieves - 0/10, led fired - 10/10. Device reaction looks like Oklick-305m
+
+
+
+|      Mouse Name             | idVendor  |  idProduct | Init (Led Fire) | Mouse Events|              Comments                  |
+| --------------------------- |:--------- | :--------- | :-------------- | :---------- | :------------------------------------- |
+| LogiLink ID0062             | 0x1a2c    | 0x0042     |    10/10        |    10/10    |                                        |
+| Microsoft Intellimouse 1.1  | 0x045e    | 0x0039     |    10/10        |    10/10    |                                        |
+| A4Tech SWOP-48              | 0x093a    | 0x2510     |    10/10        |    10/10    |                                        |
+| Genius Netscroll 110X       | 0x0458    | 0x003a     |    10/10        |    10/10    |                                        |
+| ASUS Logitech M-UV55A       | 0x046d    | 0xc016     |    10/10        |    7/10     |                                        |
+| Microsoft Wheel Mouse       | 0x045e    | 0x0040     |    6/10         |    6/10     |                                        |
+| A4Tech OP-720               | 0x093a    | 0x2510     |    10/10        |    5/10     |                                        |
+| Logitech M-BT83             | 0x046d    | 0xc03e     |    5/10         |    5/10     |                                        |
+| Logitech B100               | 0x046d    | 0xc077     |    10/10        |    3/10     |                                        |
+| Oklick-305m                 | n/a       | n/a        |    10/10        |    0/10     |                                        |
+| Exegate SH-9018             | n/a       | n/a        |    10/10        |    0/10     | Device reaction looks like Oklick-305m |
+| A4Tech X-7???               | 0x09da    | 0x8090     |    0/10         |    0/10     | Gaming mouse w/o label                 |
+
+
+| ESP32   | 1.0     |  1.0.5    |  1.0.5 |  1.0    |  1.0  |
+| ESP8266 | builtin |  0.1.0    |  0.1.0 |  n/a    |  n/a  |
+
+
+
 
 
 
