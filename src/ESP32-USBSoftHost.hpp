@@ -68,8 +68,17 @@ class USB_SOFT_HOST
     void setOndetectCb( ondetectcb_t onDetectCB );
     void setTaskTicker( ontick_t onTickCB );
     void setActivityBlinker( onledblinkcb_t onActivityCB );
+    void setTaskPriority( uint8_t p ) { priority = p; };
+    void setTaskCore( uint8_t c ) { core = c; }
+    // use those to avoid the pesky "Guru Meditation Error: Core 1 panic'ed (Cache disabled but cached memory region accessed)" error
+    // may happen when using SPIFFS, SD or other IRAM driven libraries
+    void TimerPause();
+    void TimerResume();
   private:
     bool inited = false;
+    bool paused = false;
+    uint8_t priority = 5;
+    uint8_t core = 1;
     bool _init( usb_pins_config_t pconf );
     static void (*ticker)();
     static void TimerTask(void *arg);
@@ -83,7 +92,8 @@ bool USB_SOFT_HOST::init( usb_pins_config_t pconf, ondetectcb_t onDetectCB, prin
   setPrintCb( onDataCB );
   USB_SOFT_HOST::setTaskTicker( onTickCB );
   if( _init( pconf ) ) {
-    xTaskCreatePinnedToCore(USB_SOFT_HOST::TimerTask, "USB Soft Host Timer Task", 4096, NULL, 5, NULL, 1);
+    xTaskCreatePinnedToCore(USB_SOFT_HOST::TimerTask, "USB Soft Host Timer Task", 8192, NULL, priority, NULL, core);
+    log_w("USB Soft Host Group timer task is now running on core #%d with priority %d", core, priority);
     return true;
   }
   return false;
@@ -157,6 +167,33 @@ void USB_SOFT_HOST::setActivityBlinker( onledblinkcb_t onActivityCB )
 
 
 void (*USB_SOFT_HOST::ticker)() = nullptr;
+
+
+void USB_SOFT_HOST::TimerPause()
+{
+  if( !paused ) {
+    log_d("Pausing timer");
+    timer_pause(TIMER_GROUP_0, TIMER_0);
+    paused = true;
+    vTaskDelay(1);
+  } else {
+    log_e("Timer already paused!");
+  }
+}
+
+void USB_SOFT_HOST::TimerResume()
+{
+  if( paused ) {
+    log_d("Resuming timer");
+    timer_start(TIMER_GROUP_0, TIMER_0);
+    paused = false;
+    vTaskDelay(1);
+  } else {
+    log_e("Timer already running!");
+  }
+}
+
+
 
 
 

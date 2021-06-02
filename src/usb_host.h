@@ -26,8 +26,8 @@
 #endif
 */
 
-void printState();
-void usb_process();
+void IRAM_ATTR printState();
+void IRAM_ATTR usb_process();
 typedef void (*printcb_t)(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len);
 void set_print_cb( printcb_t onDataCB );
 typedef void (*ondetectcb_t)(uint8_t usbNum, void *device);

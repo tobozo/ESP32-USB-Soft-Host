@@ -7,7 +7,7 @@
   // [KO] 15/13 : unassigned pins seem unresponsive
   // [OK] 22/23 : pins for MOSI/SCK work just fine
   #define DP_P0  22  // always enabled
-  #define DM_P0  23  // always enabled
+  #define DM_P0  21  // always enabled
   #define DP_P1  -1
   #define DM_P1  -1
   #define DP_P2  -1

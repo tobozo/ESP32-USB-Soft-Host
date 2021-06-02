@@ -115,15 +115,15 @@ uint32_t RD_SHIFT;
 //end must be setup ech time with setPins
 
 // temporary used insize lowlevel
-volatile   uint8_t received_NRZI_buffer_bytesCnt;
-uint16_t   received_NRZI_buffer[DEF_BUFF_SIZE];
+volatile uint8_t received_NRZI_buffer_bytesCnt;
+uint16_t received_NRZI_buffer[DEF_BUFF_SIZE];
 
 volatile uint8_t transmit_bits_buffer_store_cnt;
 //uint8_t transmit_bits_buffer_store[DEF_BUFF_SIZE];
 uint8_t* transmit_bits_buffer_store = (uint8_t*)&received_NRZI_buffer[0];
 
 volatile uint8_t transmit_NRZI_buffer_cnt;
-uint8_t  transmit_NRZI_buffer[DEF_BUFF_SIZE];
+uint8_t transmit_NRZI_buffer[DEF_BUFF_SIZE];
 
 volatile uint8_t decoded_receive_buffer_head;
 volatile uint8_t decoded_receive_buffer_tail;
