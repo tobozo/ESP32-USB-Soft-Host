@@ -15,6 +15,9 @@
 #include "math.h"
 #include "esp_heap_caps.h"
 
+#include "hal/cpu_hal.h"
+#include "hal/gpio_hal.h"
+
 /*******************************
 *    warning!!!: any copy of this code or his part must include this:
 *  "The original was written by Dima Samsonov @ Israel sdima1357@gmail.com on 3/2021" *
@@ -22,6 +25,9 @@
 ********************************/
 
 /*\
+   Changes by tobozo (sept 2021)
+     - Backported commits from https://github.com/sdima1357/esp32_usb_soft_host/commit/7c51138ec1ea37d4dd5363d3f25a8e7ab8716871
+     - ESP32-C3 can't work with Arduino IDE ( CONFIG_ESP_SYSTEM_MEMPROT_FEATURE=y ), C++ wrapper still valid through platformio/esp-idf though
    Changes by tobozo (may 2021):
      - Backported calibration at init (last changes from from Samsonov's repo)
    Changes by tobozo (march 2021):
@@ -68,20 +74,7 @@
 #define SMALL_NO_DATA 36
 
 
-///cpufreq (must be 240) /8 count = 30MHz  convinient number for measure 1.5MHz  of  low speed USB
-static inline uint8_t _getCycleCount8d8(void)
-{
-  uint32_t ccount;
-  __asm__ __volatile__("rsr %0,ccount":"=a" (ccount));
-  return ccount>>3;
-}
 
-static inline uint32_t _getCycleCount32(void)
-{
-  uint32_t ccount;
-  __asm__ __volatile__("rsr %0,ccount":"=a" (ccount));
-  return ccount;
-}
 
 int TRANSMIT_TIME_DELAY = 110;  //delay each bit transmit
 int TIME_MULT           = 25;    //received time factor delta clocks* TIME_MULT/TIME_SCALE
@@ -95,12 +88,44 @@ int TM_OUT              = 64;    //receive time out no activity on bus
   #define TOUT  (TM_OUT)
 #endif
 
-#define SET_I { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DM_PIN]); GPIO.enable_w1tc = (1 << DP_PIN) | (1 << DM_PIN);  }
-#define SET_O { GPIO.enable_w1ts = (1 << DP_PIN) | (1 << DM_PIN);  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DM_PIN]);  }
+static inline uint32_t _getCycleCount32()
+{
+  uint32_t ccount = cpu_hal_get_cycle_count();
+  return  ccount;
+}
+static inline uint8_t _getCycleCount8d8(void)
+{
+  uint32_t ccount = cpu_hal_get_cycle_count();
+  return ccount>>3;
+}
+
+
 #define SE_J  { *snd[1][0] = (1 << DM_PIN);*snd[1][1] = (1 << DP_PIN); }
 #define SE_0  { *snd[2][0] = (1 << DM_PIN);*snd[2][1] = (1 << DP_PIN); }
 
-#define READ_BOTH_PINS ((GPIO.in&RD_MASK)>>RD_SHIFT)
+#if CONFIG_IDF_TARGET_ESP32
+  #define SET_I { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DM_PIN]); GPIO.enable_w1tc = (1 << DP_PIN) | (1 << DM_PIN);  }
+  #define SET_O { GPIO.enable_w1ts = (1 << DP_PIN) | (1 << DM_PIN);  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DM_PIN]);  }
+  #define READ_BOTH_PINS (((GPIO.in&RD_MASK)<<8)>>RD_SHIFT)
+  uint32_t * snd[4][2]  =
+  {
+    {&GPIO.out_w1tc,&GPIO.out_w1ts},
+    {&GPIO.out_w1ts,&GPIO.out_w1tc},
+    {&GPIO.out_w1tc,&GPIO.out_w1tc},
+    {&GPIO.out_w1tc,&GPIO.out_w1tc}
+  } ;
+#else
+  #define SET_I { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DM_PIN]);  gpio_ll_output_disable(&GPIO,DM_PIN); gpio_ll_output_disable(&GPIO,DP_PIN);}
+  #define SET_O { GPIO.enable_w1ts.val = (1 << DP_PIN) | (1 << DM_PIN);  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DM_PIN]);  }
+  #define READ_BOTH_PINS (((GPIO.in.val&RD_MASK)<<8)>>RD_SHIFT)
+  uint32_t * snd[4][2]  =
+  {
+    {&GPIO.out_w1tc.val,&GPIO.out_w1ts.val},
+    {&GPIO.out_w1ts.val,&GPIO.out_w1tc.val},
+    {&GPIO.out_w1tc.val,&GPIO.out_w1tc.val},
+    {&GPIO.out_w1tc.val,&GPIO.out_w1tc.val}
+  } ;
+#endif
 
 //must be setup ech time with setPins
 uint32_t DP_PIN;
@@ -131,41 +156,73 @@ uint8_t decoded_receive_buffer[DEF_BUFF_SIZE];
 // end temporary used insize lowlevel
 
 
-void (*delay_pntA)() =NULL;
+void (*delay_pntA)() = NULL;
 #define cpuDelay(x) {(*delay_pntA)();}
+
+
+#if CONFIG_IDF_TARGET_ESP32
+  #define MAX_DELAY_CODE_SIZE 0x280
+  #define SDELAYMALLOC(X) malloc(X)
+  #define SDELAYREALLOC(X,Y,Z) heap_caps_realloc(X,Y,Z)
+  #define SDELAYRMASK MALLOC_CAP_EXEC
+  void makeOpcodes( uint8_t* ptr, uint8_t ticks )
+  {
+    //put head of delay procedure
+    *ptr++ = 0x36;
+    *ptr++ = 0x41;
+    *ptr++ = 0;
+    for(int k=0;k<ticks;k++) {
+      //put NOPs
+      *ptr++ = 0x3d;
+      *ptr++ = 0xf0;
+    }
+    //put tail of delay procedure
+    *ptr++ = 0x1d;
+    *ptr++ = 0xf0;
+    *ptr++ = 0x00;
+    *ptr++ = 0x00;
+  }
+#else // ESP32-C3
+  #define MAX_DELAY_CODE_SIZE 0x210
+  #define SDELAYMALLOC(X) heap_caps_aligned_alloc(X,MAX_DELAY_CODE_SIZE, MALLOC_CAP_8BIT);
+  #define SDELAYREALLOC(X,Y,Z) heap_caps_realloc(X,Y,Z)
+  #define SDELAYRMASK MALLOC_CAP_32BIT | MALLOC_CAP_EXEC
+  void makeOpcodes( uint8_t* ptr, uint8_t ticks )
+  {
+    //put head of delay procedure
+    for(int k=0;k<ticks;k++) {
+      //put NOPs
+      *ptr++ = 0x1;
+      *ptr++ = 0x0;
+    }
+    //put tail of delay procedure
+    *ptr++ = 0x82;
+    *ptr++ = 0x80;
+  }
+#endif
+
+
+
 void setDelay(uint8_t ticks)
 {
-  // opcodes of void test_delay() {__asm__ (" nop"); __asm__ (" nop"); __asm__ (" nop"); ...}
-  //36 41 00 3d f0 1d f0 00 // one  nop
-  //36 41 00 3d f0 3d f0 3d f0 3d f0 3d f0 1d f0 00  // five  nops
-  //36 41 00 3d f0 3d f0 3d f0 3d f0 3d f0 3d f0 1d  f0 00 00 00 //
-  int    MAX_DELAY_CODE_SIZE = 0x280;
-  uint8_t*     pntS;
+  uint8_t* pntS;
   // it can't execute but can read & write
   if(!delay_pntA) {
-    pntS = malloc(MAX_DELAY_CODE_SIZE);
+    pntS = SDELAYMALLOC( MAX_DELAY_CODE_SIZE );
   } else {
-    pntS = heap_caps_realloc(delay_pntA, MAX_DELAY_CODE_SIZE, MALLOC_CAP_8BIT);
+    pntS = SDELAYREALLOC( delay_pntA, MAX_DELAY_CODE_SIZE, MALLOC_CAP_8BIT );
   }
   uint8_t* pnt = (uint8_t*)pntS;
-  //put head of delay procedure
-  *pnt++ = 0x36;
-  *pnt++ = 0x41;
-  *pnt++ = 0;
-  for(int k=0;k<ticks;k++) {
-    //put NOPs
-    *pnt++ = 0x3d;
-    *pnt++ = 0xf0;
-  }
-  //put tail of delay procedure
-  *pnt++ = 0x1d;
-  *pnt++ = 0xf0;
-  *pnt++ = 0x00;
-  *pnt++ = 0x00;
+  makeOpcodes( pnt, ticks );
   // move it to executable memory segment
   // it can't  write  but can read & execute
-  delay_pntA = heap_caps_realloc(pntS,MAX_DELAY_CODE_SIZE,MALLOC_CAP_EXEC);
+  delay_pntA = SDELAYREALLOC( pntS, MAX_DELAY_CODE_SIZE, SDELAYRMASK );
+  if(!delay_pntA) {
+    printf("idf.py menuconfig\n Component config-> ESP System Setting -> Memory protectiom-> Disable.\n memory prot must be disabled!!!\n delay_pntA = %p,\nHalting...\n",delay_pntA);
+    while(1) { vTaskDelay(1); }
+  }
 }
+
 
 
 typedef struct
@@ -180,7 +237,7 @@ typedef struct
   uint16_t wValue;
   uint16_t wIndex;
   uint16_t wLen;
-}Req;
+} Req;
 
 
 
@@ -232,6 +289,9 @@ typedef struct
   int epCount;
   int cnt;
 
+  uint8_t flags_new;
+  uint8_t flags;
+
   uint32_t DP;
   uint32_t DM;
 
@@ -264,24 +324,51 @@ typedef struct
   int transmitL1Bytes;
   uint8_t transmitL1[DEF_BUFF_SIZE];
 
-  uint8_t Resp0[DEF_BUFF_SIZE];
-  uint8_t R0Bytes;
-  uint8_t Resp1[DEF_BUFF_SIZE];
-  uint8_t R1Bytes;
-
 } sUsbContStruct;
 
 sUsbContStruct * current;
 
-
-uint32_t* snd[4][2]  =
+void parseImmed(sUsbContStruct * pcurrent)
 {
-  { &GPIO.out_w1tc, &GPIO.out_w1ts },
-  { &GPIO.out_w1ts, &GPIO.out_w1tc },
-  { &GPIO.out_w1tc, &GPIO.out_w1tc },
-  { &GPIO.out_w1tc, &GPIO.out_w1tc }
-} ;
+  static sCfgDesc      cfg;
+  static sIntfDesc     sIntf;
+  static HIDDescriptor hid[4];
+  static sEPDesc       epd;
+  static int           cfgCount   = 0;
+  static int           sIntfCount   = 0;
+  static int           hidCount   = 0;
+  int                  pos = 0;
+  #define STDCLASS     0x00
+  #define HIDCLASS     0x03
+  #define HUBCLASS     0x09      /* bDeviceClass, bInterfaceClass */
 
+  pcurrent->epCount     = 0;
+
+  while(pos<pcurrent->descrBufferLen-2) {
+    uint8_t len  =  pcurrent->descrBuffer[pos];
+    uint8_t type =  pcurrent->descrBuffer[pos+1];
+    if(len==0) {
+      //printf("pos = %02x type = %02x cfg.wLength = %02x pcurrent->acc_decoded_resp_counter = %02x\n ",pos,type,cfg.wLength,pcurrent->acc_decoded_resp_counter);
+      pos = pcurrent->descrBufferLen;
+    }
+    if(pos+len<=pcurrent->descrBufferLen) {
+      if(type == 0x2) {
+        memcpy(&cfg,&pcurrent->descrBuffer[pos],len);
+
+      } else if (type == 0x4) {
+        memcpy(&sIntf,&pcurrent->descrBuffer[pos],len);
+      } else if (type == 0x21) {
+        hidCount++;
+        int i = hidCount-1;
+        memcpy(&hid[i],&pcurrent->descrBuffer[pos],len);
+      } else if (type == 0x5) {
+        pcurrent->epCount++;
+        memcpy(&epd,&pcurrent->descrBuffer[pos],len);
+      }
+    }
+    pos+=len;
+  }
+}
 
 #ifdef WR_SIMULTA
 uint32_t sndA[4]  = {0,0,0,0};
@@ -449,7 +536,8 @@ uint8_t rev8(uint8_t j)
 
 
 
-uint16_t rev16(uint16_t j) {
+uint16_t rev16(uint16_t j)
+{
   uint16_t res = 0;
   for(int i=0;i<16;i++) {
     res<<=1;
@@ -570,22 +658,22 @@ void sendOnly()
 {
   uint8_t k;
   SET_O;
-#ifdef WR_SIMULTA
-  uint32_t out_base = GPIO.out;
-  sndA[0] = (out_base | DP) &~DM;
-  sndA[1] = (out_base | DM) &~DP;
-  sndA[2] = (out_base )&~(DP | DM);
-  sndA[3] = out_base | (DM | DP);
-#endif
+  #ifdef WR_SIMULTA
+    uint32_t out_base = GPIO.out;
+    sndA[0] = (out_base | DP) &~DM;
+    sndA[1] = (out_base | DM) &~DP;
+    sndA[2] = (out_base )&~(DP | DM);
+    sndA[3] = out_base | (DM | DP);
+  #endif
   for(k=0;k<transmit_NRZI_buffer_cnt;k++) {
     //usb_transmit_delay(10);
     cpuDelay(TRANSMIT_TIME_DELAY);
-#ifdef WR_SIMULTA
-    GPIO.out = sndA[transmit_NRZI_buffer[k]];
-#else
-    *snd[transmit_NRZI_buffer[k]][0] = DM_PIN_M;
-    *snd[transmit_NRZI_buffer[k]][1] = DP_PIN_M;
-#endif
+    #ifdef WR_SIMULTA
+      GPIO.out = sndA[transmit_NRZI_buffer[k]];
+    #else
+      *snd[transmit_NRZI_buffer[k]][0] = DM_PIN_M;
+      *snd[transmit_NRZI_buffer[k]][1] = DP_PIN_M;
+    #endif
   }
   restart();
   SET_I;
@@ -593,7 +681,7 @@ void sendOnly()
 
 
 void sendRecieveNParse()
-    {
+{
   register uint32_t R3;
   register uint16_t *STORE = received_NRZI_buffer;
   //__disable_irq();
@@ -675,7 +763,7 @@ void pu_Cmd(uint8_t cmd,uint8_t bmRequestType, uint8_t bmRequest,uint16_t wValue
 
 
 uint8_t ACK_BUFF[0x20];
-int    ACK_BUFF_CNT = 0;
+int ACK_BUFF_CNT = 0;
 
 
 void ACK()
@@ -736,20 +824,19 @@ void timerCallBack()
       current->bComplete     = 1;
     }
   } else if (current->cb_Cmd==CB_POWER) {
-
     // for TEST
-#ifdef TEST
-    SOF();
-    sendRecieve();
-    SOF();
-    SOF();
-#else
-    SET_O;
-    SE_J;
-    SET_I;
-    current->cmdTimeOut  =    2;
-    current->cb_Cmd  = CB_WAIT1;
-#endif
+    #ifdef TEST
+      SOF();
+      sendRecieve();
+      SOF();
+      SOF();
+    #else
+      SET_O;
+      SE_J;
+      SET_I;
+      current->cmdTimeOut  =    2;
+      current->cb_Cmd  = CB_WAIT1;
+    #endif
   } else if (current->cb_Cmd==CB_TICK) {
     SOF();
     current->bComplete     =         1;
@@ -786,7 +873,16 @@ void timerCallBack()
     pu_Addr(T_IN,current->rq.addr,current->rq.eop);
     //setup
     sendRecieveNParse();
-    ACK();
+    if(received_NRZI_buffer_bytesCnt<SMALL_NO_DATA &&  received_NRZI_buffer_bytesCnt >SMALL_NO_DATA/4) {
+      ACK();
+    } else {
+      current->numb_reps_errors_allowed--;
+      if(current->numb_reps_errors_allowed>0) {
+        return;
+      } else {
+
+      }
+    }
     current->cb_Cmd=CB_TICK;
     current->bComplete = 1;
   } else if(current->cb_Cmd==CB_5) {
@@ -978,8 +1074,7 @@ void Request( uint8_t cmd, uint8_t addr, uint8_t eop, uint8_t dataCmd,uint8_t bm
 
 
 
-void RequestSend(uint8_t cmd,   uint8_t addr,uint8_t eop,
-      uint8_t  dataCmd,uint8_t bmRequestType, uint8_t bmRequest,uint16_t wValue,uint16_t wIndex,uint16_t wLen,uint16_t transmitL1Bytes,uint8_t* data)
+void RequestSend(uint8_t cmd,   uint8_t addr,uint8_t eop, uint8_t  dataCmd,uint8_t bmRequestType, uint8_t bmRequest,uint16_t wValue,uint16_t wIndex,uint16_t wLen,uint16_t transmitL1Bytes,uint8_t* data)
 {
   current->rq.cmd  = cmd;
   current->rq.addr = addr;
@@ -1012,13 +1107,12 @@ void RequestIn(uint8_t cmd,   uint8_t addr,uint8_t eop,uint16_t waitForBytes)
 }
 
 
-void (*printDataCB)(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len) = NULL;
+void (*usbMess)(uint8_t src,uint8_t len,uint8_t *data) = NULL;
 
-void set_print_cb( printcb_t cb )
+void set_usb_mess_cb( onusbmesscb_t onUSBMessCb )
 {
-  printDataCB = cb;
-};
-
+  usbMess = onUSBMessCb;
+}
 
 
 void (*onDetectCB)(uint8_t usbNum, void *device) = NULL;
@@ -1027,6 +1121,7 @@ void set_ondetect_cb( ondetectcb_t cb )
 {
   onDetectCB = cb;
 }
+
 
 void (*onLedBlinkCB)(int on_off) = NULL;
 
@@ -1060,11 +1155,11 @@ void fsm_Mashine()
     current->fsm_state    = 3;
   } else if(current->fsm_state==3) {
     current->cb_Cmd       = CB_POWER;
-#ifdef TEST
-    current->fsm_state    =  3;
-#else
-    current->fsm_state    =  4;
-#endif
+    #ifdef TEST
+      current->fsm_state    =  3;
+    #else
+      current->fsm_state    =  4;
+    #endif
   } else if(current->fsm_state==4) {
     Request(T_SETUP,ZERO_USB_ADDRESS,0b0000,T_DATA0,0x80,0x6,0x0100,0x0000,0x0012,0x0012);
     current->fsm_state    = 5;
@@ -1118,8 +1213,10 @@ void fsm_Mashine()
     Request(T_SETUP,ASSIGNED_USB_ADDRESS,0b0000,T_DATA0,0x21,0xa,0x0000,0x0000,0x0000,0x0000);
     current->fsm_state    = 99;
   } else if(current->fsm_state==99) {
-    uint8_t cmd1 = 0;
-    RequestSend(T_SETUP,ASSIGNED_USB_ADDRESS,0b0000,T_DATA0,0x21,0x9,0x0200,0x0000,0x0001,0x0001,&cmd1);
+    if(current->flags_new!=current->flags) {
+      current->flags = current->flags_new;
+      RequestSend(T_SETUP,ASSIGNED_USB_ADDRESS,0b0000,T_DATA0,0x21,0x9,0x0200,0x0000,0x0001,0x0001,&current->flags);
+    }
     current->fsm_state    = 100;
   } else if(current->fsm_state==100) {
      if( onLedBlinkCB ) onLedBlinkCB(0);
@@ -1127,9 +1224,7 @@ void fsm_Mashine()
      current->fsm_state    = 101;
   } else if(current->fsm_state==101) {
     if(current->acc_decoded_resp_counter>=1) {
-      current->ufPrintDesc |= 8;
-      current->R0Bytes= current->acc_decoded_resp_counter;
-      memcpy(current->Resp0,current->acc_decoded_resp,current->R0Bytes);
+      usbMess(current->selfNum*4+0,current->acc_decoded_resp_counter,current->acc_decoded_resp);
       if( onLedBlinkCB ) onLedBlinkCB(1);
     }
     if(current->epCount>=2) {
@@ -1142,9 +1237,8 @@ void fsm_Mashine()
      }
   } else if(current->fsm_state==102) {
      if(current->acc_decoded_resp_counter>=1) {
-      current->ufPrintDesc |= 16;
-      current->R1Bytes= current->acc_decoded_resp_counter;
-      memcpy(current->Resp1,current->acc_decoded_resp,current->R0Bytes);
+       usbMess(current->selfNum*4+1,current->acc_decoded_resp_counter,current->acc_decoded_resp);
+       if( onLedBlinkCB ) onLedBlinkCB(1);
      }
     current->cmdTimeOut = 2;
     current->cb_Cmd        = CB_WAIT1;
@@ -1152,18 +1246,18 @@ void fsm_Mashine()
   } else if (current->fsm_state==104) {
     current->cmdTimeOut = 4;
     current->cb_Cmd        = CB_WAIT1;
-#ifdef  DEBUG_REPEAT
+  #ifdef  DEBUG_REPEAT
     static int rcnt =0;
     rcnt++;  //
     if(  (rcnt&0xff)==0 ||  (current->wires_last_state!=M_ONE))
-#else
+  #else
     if(current->wires_last_state!=M_ONE)
-#endif
+  #endif
     {
       current->fsm_state      = 0;
       return ;
     }
-    current->fsm_state      = 100;
+    current->fsm_state      = 99;
   } else {
     current->cmdTimeOut = 2;
     current->cb_Cmd        = CB_WAIT1;
@@ -1187,16 +1281,11 @@ void setPins(int DPPin,int DMPin)
   DM_PIN_M   = (1 << DMPin);
   DP_PIN_M    = (1 << DPPin);
   RD_MASK    = (1<<DPPin)|(1<<DMPin);
-  int DIFF = MIN_PIN-8;
-  if(DIFF>=0) {
-    RD_SHIFT = DIFF;
-    M_ONE = 1<<(DM_PIN-MIN_PIN);
-    P_ONE = 1<<(DP_PIN-MIN_PIN);
-  } else {
-    RD_SHIFT = -DIFF;
-    M_ONE = 2;
-    P_ONE = 1;
-  }
+
+  RD_SHIFT = MIN_PIN;
+  M_ONE = 1<<(DM_PIN-MIN_PIN);
+  P_ONE = 1<<(DP_PIN-MIN_PIN);
+
 }
 
 
@@ -1216,10 +1305,19 @@ int checkPins(int dp,int dm)
 }
 
 
+int64_t get_system_time_us()
+{
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return (tv.tv_sec * 1000000LL + (tv.tv_usec ));
+}
+
+
 float testDelay6(float freq_MHz)
 {
   // 6 bits must take 4.0 uSec
   #define SEND_BITS  120
+  #define REPS 40
   float res = 1;
   transmit_NRZI_buffer_cnt = 0;
 
@@ -1227,11 +1325,18 @@ float testDelay6(float freq_MHz)
     transmit_NRZI_buffer[transmit_NRZI_buffer_cnt++] = USB_LS_K;
     transmit_NRZI_buffer[transmit_NRZI_buffer_cnt++] = USB_LS_J;
   }
-  uint32_t stim = _getCycleCount32();
-  sendOnly();
-  stim =  _getCycleCount32()- stim;
-  res = stim*6.0/freq_MHz/SEND_BITS;
-  printf("%d bits in %f uSec %f MHz  6 ticks in %f uS\n",SEND_BITS,stim/(float)freq_MHz,SEND_BITS*freq_MHz/stim,stim*6.0/freq_MHz/SEND_BITS);
+
+
+  int64_t stimb = get_system_time_us();
+  for(int k=0;k<REPS;k++) {
+    sendOnly();
+    transmit_NRZI_buffer_cnt = SEND_BITS;
+  }
+
+  uint32_t stim =  get_system_time_us()- stimb;
+  freq_MHz = 1.0f;
+  res = stim*6.0/freq_MHz/(SEND_BITS*REPS);
+  printf("%d bits in %f uSec %f MHz  6 ticks in %f uS\n",(SEND_BITS*REPS),stim/(float)freq_MHz,(SEND_BITS*REPS)*freq_MHz/stim,stim*6.0/freq_MHz/(SEND_BITS*REPS));
 
   return res;
 }
@@ -1266,6 +1371,8 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
     if(checkPins(current->DP,current->DM)) {
       printf("USB#%d (pins %d %d) is OK!\n", k, current->DP, current->DM );
       current->selfNum = k;
+      current->flags_new  = 0x0;
+      current->flags 		= 0x0;
       current->in_data_flip_flop       = 0;
       current->bComplete  = 1;
       current->cmdTimeOut = 0;
@@ -1277,19 +1384,36 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
       current->counterAck = 0;
       current->epCount = 0;
       gpio_pad_select_gpio(current->DP);
+      gpio_set_direction(current->DP, GPIO_MODE_OUTPUT);
+      gpio_set_level(current->DP, 0);
       gpio_set_direction(current->DP, GPIO_MODE_INPUT);
       gpio_pulldown_en(current->DP);
 
       gpio_pad_select_gpio(current->DM);
+      gpio_set_direction(current->DM, GPIO_MODE_OUTPUT);
+      gpio_set_level(current->DM, 0);
       gpio_set_direction(current->DM, GPIO_MODE_INPUT);
       gpio_pulldown_en(current->DM);
       current->isValid = 1;
 
       // TEST
       setPins(current->DP,current->DM);
+      printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
+      SET_O;
+      SE_0;
+      SE_J;
+      SE_0;
+      SET_I;
+      printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
+      gpio_set_direction(current->DP, GPIO_MODE_OUTPUT);
+      gpio_set_direction(current->DM, GPIO_MODE_OUTPUT);
+      printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
+      SET_I;
+      printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
 
       if(!calibrated) {
         //calibrate delay divide 2
+        #define DELAY_CORR 2
         int  uTime = 254;
         int  dTime = 0;
 
@@ -1306,11 +1430,13 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
 
         int     TRANSMIT_TIME_DELAY_OPT = 0;
         TRANSMIT_TIME_DELAY = TRANSMIT_TIME_DELAY_OPT;
+        printf("D=%4d ",TRANSMIT_TIME_DELAY);
         setDelay(TRANSMIT_TIME_DELAY);
         float  cS_opt = testDelay6(out_config.freq_mhz);
         #define OPT_TIME (4.00f)
         for(int p=0;p<9;p++) {
           TRANSMIT_TIME_DELAY = (uTime+dTime)/2;
+          printf("D=%4d ",TRANSMIT_TIME_DELAY);
           setDelay(TRANSMIT_TIME_DELAY);
           float cS = testDelay6(out_config.freq_mhz);
           if(fabsf(OPT_TIME-cS)<fabsf(OPT_TIME-cS_opt)) {
@@ -1323,7 +1449,7 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
             uTime = TRANSMIT_TIME_DELAY;
           }
         }
-        TRANSMIT_TIME_DELAY = TRANSMIT_TIME_DELAY_OPT;
+        TRANSMIT_TIME_DELAY = TRANSMIT_TIME_DELAY_OPT+DELAY_CORR;
         setDelay(TRANSMIT_TIME_DELAY);
         printf("TRANSMIT_TIME_DELAY = %d time = %f error = %f%% \n",TRANSMIT_TIME_DELAY,cS_opt,(cS_opt-OPT_TIME)/OPT_TIME*100);
       }
@@ -1339,8 +1465,30 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
 
 
 
+void usbSetFlags(int _usb_num,uint8_t flags)
+{
+  if(_usb_num<NUM_USB&&_usb_num>=0) {
+    current_usb[_usb_num].flags_new =  flags;
+  }
+}
+
+
+
+uint8_t usbGetFlags(int _usb_num)
+{
+  if(_usb_num<NUM_USB&&_usb_num>=0) {
+    return current_usb[_usb_num].flags;
+  }
+  return  0;
+}
+
+
+
 void usb_process()
 {
+  #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
+    cpu_ll_enable_cycle_count();
+  #endif
   for(int k=0;k<NUM_USB;k++) {
     current = &current_usb[k];
     if(current->isValid) {
@@ -1352,6 +1500,7 @@ void usb_process()
 }
 
 
+
 void printState()
 {
   static int cntl = 0;
@@ -1359,22 +1508,21 @@ void printState()
   int ref = cntl%NUM_USB;
   sUsbContStruct * pcurrent = &current_usb[ref];
   if(!pcurrent->isValid) return ;
-  if((cntl%200)<NUM_USB) {
+  if((cntl%800)<NUM_USB) {
     #ifdef DEBUG_ALL
-    printf("USB%d: Ack = %d Nack = %d %02x pcurrent->cb_Cmd = %d  state = %d epCount = %d --",
-      cntl%NUM_USB, pcurrent->counterAck,
-      pcurrent->counterNAck,
-      pcurrent->wires_last_state,
-      pcurrent->cb_Cmd,
-      pcurrent->fsm_state,
-      pcurrent->epCount
-    );
-    for(int k=0;k<20;k++) {
-      printf("%04x ", debug_buff[k]);
-    }
-    printf("\n");
+      printf("USB%d: Ack = %d Nack = %d %02x pcurrent->cb_Cmd = %d  state = %d epCount = %d --",
+        cntl%NUM_USB, pcurrent->counterAck,
+        pcurrent->counterNAck,
+        pcurrent->wires_last_state,
+        pcurrent->cb_Cmd,
+        pcurrent->fsm_state,
+        pcurrent->epCount
+      );
+      for(int k=0;k<20;k++) {
+        printf("%04x ", debug_buff[k]);
+      }
+      printf("\n");
     #endif
-
   }
 
   if(pcurrent->ufPrintDesc&1) {
@@ -1395,34 +1543,6 @@ void printState()
     pcurrent->ufPrintDesc &= ~(uint32_t)2;
   }
 
-  if(pcurrent->ufPrintDesc&8) {
-    pcurrent->ufPrintDesc &= ~(uint32_t)8;
-
-    if( printDataCB ) {
-      printDataCB( ref, 8, pcurrent->Resp0, pcurrent->R0Bytes );
-    } else {
-      printf("in0 :");
-      for(int k=0;k<pcurrent->R0Bytes;k++) {
-        printf("%02x ",pcurrent->Resp0[k]);
-      }
-      printf("\n");
-    }
-  }
-
-  if(pcurrent->ufPrintDesc&16) {
-    pcurrent->ufPrintDesc &= ~(uint32_t)16;
-
-    if( printDataCB ) {
-      printDataCB( ref, 16, pcurrent->Resp1, pcurrent->R1Bytes );
-    } else {
-      printf("in1 :");
-      for(int k=0;k<pcurrent->R1Bytes;k++) {
-        printf("%02x ",pcurrent->Resp1[k]);
-      }
-      printf("\n");
-    }
-  }
-
   if(pcurrent->ufPrintDesc&4) {
     pcurrent->ufPrintDesc &= ~(uint32_t)4;
     sCfgDesc lcfg;
@@ -1435,9 +1555,9 @@ void printState()
     int pos = 0;
     #define STDCLASS        0x00
     #define HIDCLASS        0x03
-    #define HUBCLASS     0x09      /* bDeviceClass, bInterfaceClass */
+    #define HUBCLASS     0x09      // bDeviceClass, bInterfaceClass
     #ifdef DEBUG_ALL
-    printf("clear epCount %d self = %d\n",pcurrent->epCount,pcurrent->selfNum);
+      printf("clear epCount %d self = %d\n",pcurrent->epCount,pcurrent->selfNum);
     #endif
     pcurrent->epCount     = 0;
     while(pos<pcurrent->descrBufferLen-2) {
@@ -1451,10 +1571,12 @@ void printState()
         if(type == 0x2) {
           sCfgDesc cfg;
           memcpy(&cfg,&pcurrent->descrBuffer[pos],len);
-          printf("cfg.wLength         = %02x\n",cfg.wLength);
-          printf("cfg.bNumIntf        = %02x\n",cfg.bNumIntf);
-          printf("cfg.bCV             = %02x\n",cfg.bCV);
-          printf("cfg.bMaxPower       = %d\n",cfg.bMaxPower);
+          #ifdef DEBUG_ALL
+            printf("cfg.wLength         = %02x\n",cfg.wLength);
+            printf("cfg.bNumIntf        = %02x\n",cfg.bNumIntf);
+            printf("cfg.bCV             = %02x\n",cfg.bCV);
+            printf("cfg.bMaxPower       = %d\n",cfg.bMaxPower);
+          #endif
         } else if (type == 0x4) {
           sIntfDesc sIntf;
           memcpy(&sIntf,&pcurrent->descrBuffer[pos],len);
@@ -1463,17 +1585,17 @@ void printState()
           int i = hidCount-1;
           memcpy(&hid[i],&pcurrent->descrBuffer[pos],len);
         } else if (type == 0x5) {
-          pcurrent->epCount++;
+          //pcurrent->epCount++;
           sEPDesc epd;
           memcpy(&epd,&pcurrent->descrBuffer[pos],len);
           #ifdef DEBUG_ALL
-          printf("pcurrent->epCount = %d\n",pcurrent->epCount);
-          printf("epd.bLength       = %02x\n",epd.bLength);
-          printf("epd.bType         = %02x\n",epd.bType);
-          printf("epd.bEPAdd        = %02x\n",epd.bEPAdd);
-          printf("epd.bAttr         = %02x\n",epd.bAttr);
-          printf("epd.wPayLoad      = %02x\n",epd.wPayLoad);
-          printf("epd.bInterval     = %02x\n",epd.bInterval);
+            printf("pcurrent->epCount = %d\n",pcurrent->epCount);
+            printf("epd.bLength       = %02x\n",epd.bLength);
+            printf("epd.bType         = %02x\n",epd.bType);
+            printf("epd.bEPAdd        = %02x\n",epd.bEPAdd);
+            printf("epd.bAttr         = %02x\n",epd.bAttr);
+            printf("epd.wPayLoad      = %02x\n",epd.wPayLoad);
+            printf("epd.bInterval     = %02x\n",epd.bInterval);
           #endif
         }
       }

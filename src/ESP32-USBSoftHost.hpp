@@ -2,13 +2,29 @@
 #define __USB_SOFT_HOST_HPP_
 
 #ifndef BLINK_GPIO
-#define BLINK_GPIO 2
+  //#define BLINK_GPIO 2
+  #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
+    #define BLINK_GPIO 18
+  #else
+    #define BLINK_GPIO 22
+  #endif
 #endif
+
 
 // include the modified version from Dmitry Samsonov
 extern "C" {
   #include "usb_host.h"
 }
+
+static xQueueHandle usb_msg_queue = NULL;
+
+struct USBMessage
+{
+  uint8_t src;
+  uint8_t len;
+  uint8_t data[0x8];
+};
+
 
 
 // pins configuration
@@ -25,6 +41,14 @@ typedef struct
 } usb_pins_config_t;
 // task ticker
 typedef void (*ontick_t)();
+
+
+void (*printDataCB)(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len) = NULL;
+
+void set_print_cb( printcb_t cb )
+{
+  printDataCB = cb;
+}
 
 
 static void Default_USB_DetectCB( uint8_t usbNum, void * dev )
@@ -66,6 +90,7 @@ class USB_SOFT_HOST
     bool init( usb_pins_config_t pconf, ondetectcb_t detectCB = Default_USB_DetectCB, printcb_t onDataCB = Default_USB_DataCB, ontick_t onTickCB = nullptr );
     void setPrintCb( printcb_t onDataCB );
     void setOndetectCb( ondetectcb_t onDetectCB );
+
     void setTaskTicker( ontick_t onTickCB );
     void setActivityBlinker( onledblinkcb_t onActivityCB );
     void setTaskPriority( uint8_t p ) { priority = p; };
@@ -74,12 +99,16 @@ class USB_SOFT_HOST
     // may happen when using SPIFFS, SD or other IRAM driven libraries
     void TimerPause();
     void TimerResume();
+
+
   private:
     bool inited = false;
     bool paused = false;
     uint8_t priority = 5;
     uint8_t core = 1;
     bool _init( usb_pins_config_t pconf );
+    void setUSBMessageCb( onusbmesscb_t onMessageCB );
+    static void onUSBMessageDecode(uint8_t src, uint8_t len, uint8_t *data);
     static void (*ticker)();
     static void TimerTask(void *arg);
 };
@@ -90,6 +119,8 @@ bool USB_SOFT_HOST::init( usb_pins_config_t pconf, ondetectcb_t onDetectCB, prin
 {
   setOndetectCb( onDetectCB );
   setPrintCb( onDataCB );
+  setUSBMessageCb( onUSBMessageDecode );
+  //setMessageReceiver(
   USB_SOFT_HOST::setTaskTicker( onTickCB );
   if( _init( pconf ) ) {
     xTaskCreatePinnedToCore(USB_SOFT_HOST::TimerTask, "USB Soft Host Timer Task", 8192, NULL, priority, NULL, core);
@@ -112,7 +143,13 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
   config.alarm_en    = TIMER_ALARM_EN;
   config.auto_reload = (timer_autoreload_t) 1; // fix for ¬invalid conversion from 'int' to 'timer_autoreload_t'¬ thanks rudi ;-)
 
-  timer_queue = xQueueCreate(10, sizeof(timer_event_t));
+  #if !defined USE_NATIVE_GROUP_TIMERS
+    timer_queue = xQueueCreate( 10, sizeof(timer_event_t) );
+  #endif
+
+  setDelay(4);
+
+  usb_msg_queue = xQueueCreate( 10, sizeof(struct USBMessage) );
 
   initStates(
     (gpio_num_t)pconf.dp0, (gpio_num_t)pconf.dm0,
@@ -122,7 +159,7 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
   );
 
   gpio_pad_select_gpio((gpio_num_t)BLINK_GPIO);
-  gpio_set_direction((gpio_num_t)BLINK_GPIO, GPIO_MODE_OUTPUT);
+  //gpio_set_direction((gpio_num_t)BLINK_GPIO, GPIO_MODE_OUTPUT);
 
   timer_init(TIMER_GROUP_0, TIMER_0, &config);
   timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x00000000ULL);
@@ -136,6 +173,11 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
   return true;
 }
 
+
+void USB_SOFT_HOST::setUSBMessageCb( onusbmesscb_t onMessageCB )
+{
+  set_usb_mess_cb( onMessageCB );
+}
 
 
 void USB_SOFT_HOST::setPrintCb( printcb_t onDataCB )
@@ -162,6 +204,20 @@ void USB_SOFT_HOST::setTaskTicker( ontick_t onTickCB )
 void USB_SOFT_HOST::setActivityBlinker( onledblinkcb_t onActivityCB )
 {
   set_onled_blink_cb( onActivityCB );
+}
+
+
+
+// called from underlaying C
+void USB_SOFT_HOST::onUSBMessageDecode(uint8_t src, uint8_t len, uint8_t *data)
+{
+  struct  USBMessage msg;
+  msg.src = src;
+  msg.len = len<0x8?len:0x8;
+  for(int k=0;k<msg.len;k++) {
+    msg.data[k] = data[k];
+  }
+  xQueueSend( usb_msg_queue, ( void * ) &msg,(TickType_t)0 );
 }
 
 
@@ -195,13 +251,22 @@ void USB_SOFT_HOST::TimerResume()
 
 
 
-
-
 void USB_SOFT_HOST::TimerTask(void *arg)
 {
   while (1) {
-    timer_event_t evt;
-    xQueueReceive(timer_queue, &evt, portMAX_DELAY);
+    struct USBMessage msg;
+
+    #if !defined USE_NATIVE_GROUP_TIMERS
+      timer_event_t evt;
+      xQueueReceive(timer_queue, &evt, portMAX_DELAY);
+    #endif
+
+    if( xQueueReceive(usb_msg_queue, &msg, 0) ) {
+      if( printDataCB ) {
+        printDataCB( msg.src/4, 32, msg.data, msg.len );
+      }
+    }
+
     printState();
     if( ticker ) ticker();
     vTaskDelay(10 / portTICK_PERIOD_MS);

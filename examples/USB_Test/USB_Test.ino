@@ -6,6 +6,7 @@
 #if defined ARDUINO_LOLIN_D32_PRO
   // [KO] 15/13 : unassigned pins seem unresponsive
   // [OK] 22/23 : pins for MOSI/SCK work just fine
+  #define PROFILE_NAME "LoLin D32 Pro"
   #define DP_P0  22  // always enabled
   #define DM_P0  21  // always enabled
   #define DP_P1  -1
@@ -16,6 +17,7 @@
   #define DM_P3  -1
 #elif defined ARDUINO_M5STACK_Core2
   // [OK] 33/32 are the GROVE port pins for I2C, but there are other devices interferring on the bus
+  #define PROFILE_NAME "M5Stack Core2"
   #define DP_P0  33  // always enabled
   #define DM_P0  32  // always enabled
   #define DP_P1  -1
@@ -28,6 +30,7 @@
   // [KO] 16/17 : GROVE port pins for RX2/TX2 but seem unresponsive
   // [KO] 21/22 : GROVE port pins for SDA/SCL, but there are other devices interferring on the bus
   // [KO] 26/36 : GROVE port pins for I/O but seem unresponsive
+  #define PROFILE_NAME "M5Stack Fire"
   #define DP_P0  16  // always enabled
   #define DM_P0  17  // always enabled
   #define DP_P1  -1
@@ -38,6 +41,7 @@
   #define DM_P3  -1
 #elif defined ARDUINO_M5Stack_Core_ESP32
   // [OK] 16/17 : M5Bottom pins for RX2/TX2 work just fine
+  #define PROFILE_NAME "M5Stack Gray"
   #define DP_P0  16  // always enabled
   #define DM_P0  17  // always enabled
   #define DP_P1  -1
@@ -46,8 +50,20 @@
   #define DM_P2  -1
   #define DP_P3  -1
   #define DM_P3  -1
+#elif CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
+  #define PROFILE_NAME "ESP32 C3 Dev module"
+  #define DP_P0   6
+  #define DM_P0   8
+  #define DP_P1  -1
+  #define DM_P1  -1
+  #define DM_P1  -1
+  #define DP_P2  -1
+  #define DM_P2  -1
+  #define DP_P3  -1
+  #define DM_P3  -1
 #else
   // default pins tested on ESP32-Wroom
+  #define PROFILE_NAME "Default Wroom"
   #define DP_P0  16  // always enabled
   #define DM_P0  17  // always enabled
   #define DP_P1  22 // -1 to disable
@@ -106,7 +122,7 @@ void setup()
 
   Serial.begin(115200);
   delay(200);
-  Serial.println("USB Test");
+  Serial.printf("USB Soft Host Test for %s\n", PROFILE_NAME );
   delay(1000);
 
   USH.init( USB_Pins_Config, my_USB_DetectCB, my_USB_PrintCB );
