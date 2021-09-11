@@ -71,8 +71,8 @@ Known working HID devices:
 Proof of concept:
 -----------------
 
-[![](extras/ESP32-USB-host.png)]
-[![](extras/m5stack-pins_16_17.jpeg)]
+![](extras/ESP32-USB-host.png)
+![](extras/m5stack-pins_16_17.jpeg)
 
 Credits:
 --------
