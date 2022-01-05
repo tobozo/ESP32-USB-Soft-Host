@@ -2,7 +2,6 @@
 #define __USB_SOFT_HOST_HPP_
 
 #ifndef BLINK_GPIO
-  //#define BLINK_GPIO 2
   #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
     #define BLINK_GPIO 18
   #else

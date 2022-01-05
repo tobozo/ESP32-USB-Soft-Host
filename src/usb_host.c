@@ -88,12 +88,12 @@ int TM_OUT              = 64;    //receive time out no activity on bus
   #define TOUT  (TM_OUT)
 #endif
 
-static inline uint32_t _getCycleCount32()
+static uint32_t _getCycleCount32()
 {
   uint32_t ccount = cpu_hal_get_cycle_count();
   return  ccount;
 }
-static inline uint8_t _getCycleCount8d8(void)
+static uint8_t _getCycleCount8d8(void)
 {
   uint32_t ccount = cpu_hal_get_cycle_count();
   return ccount>>3;
@@ -376,7 +376,7 @@ uint32_t sndA[4]  = {0,0,0,0};
 
 
 
-inline void restart()
+void restart()
 {
   transmit_NRZI_buffer_cnt = 0;
 }
@@ -390,7 +390,7 @@ void decoded_receive_buffer_clear()
 
 
 
-inline void decoded_receive_buffer_put(uint8_t val)
+void decoded_receive_buffer_put(uint8_t val)
 {
   decoded_receive_buffer[decoded_receive_buffer_head] = val;
   decoded_receive_buffer_head++;
@@ -454,14 +454,14 @@ uint32_t cal16()
 
 
 
-inline void seB(int bit)
+void seB(int bit)
 {
   transmit_bits_buffer_store[transmit_bits_buffer_store_cnt++] = bit;
 }
 
 
 
-inline void pu_MSB(uint16_t msg,int N)
+void pu_MSB(uint16_t msg,int N)
 {
   for(int k=0;k<N;k++) {
     seB(msg&(1<<(N-1-k))?1:0);
@@ -470,7 +470,7 @@ inline void pu_MSB(uint16_t msg,int N)
 
 
 
-inline void pu_LSB(uint16_t msg,int N)
+void pu_LSB(uint16_t msg,int N)
 {
   for(int k=0;k<N;k++) {
     seB(msg&(1<<(k))?1:0);

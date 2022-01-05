@@ -44,6 +44,8 @@ void set_onled_blink_cb( onledblinkcb_t cb );
 
 void initStates( int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3);
 void setDelay(uint8_t ticks);
+uint8_t usbGetFlags(int _usb_num);
+void usbSetFlags(int _usb_num,uint8_t flags);
 
 
 typedef struct
