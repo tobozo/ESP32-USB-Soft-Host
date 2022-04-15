@@ -15,8 +15,9 @@
 #include "math.h"
 #include "esp_heap_caps.h"
 
-#include "hal/cpu_hal.h"
-#include "hal/gpio_hal.h"
+//#include "hal/cpu_hal.h"
+//#include "hal/gpio_hal.h"
+#include "esp32-hal.h"
 
 /*******************************
 *    warning!!!: any copy of this code or his part must include this:
@@ -87,7 +88,7 @@ int TM_OUT              = 64;    //receive time out no activity on bus
 #else
   #define TOUT  (TM_OUT)
 #endif
-
+#define cpu_hal_get_cycle_count xthal_get_ccount
 static uint32_t _getCycleCount32()
 {
   uint32_t ccount = cpu_hal_get_cycle_count();
@@ -1606,4 +1607,5 @@ void printState()
 
 
 #pragma GCC diagnostic pop
+
 
