@@ -48,7 +48,7 @@
 
 #ifndef USE_TUSB_FIFO
 typedef xQueueHandle hal_queue_handle_t;
-#define hal_queue_create xQueueCreate
+#define hal_queue_create(n, sz, b) xQueueCreate(n, sz)
 #define hal_queue_send(q, m)  xQueueSend(q, ( void * ) (m), (TickType_t)0)
 #define hal_queue_receive(q, m) xQueueReceive(q, m, 0)
 #endif
@@ -94,7 +94,7 @@ void usbhost_timer_cb(void *para);
 
 #ifdef USE_TUSB_FIFO
 typedef tu_fifo_t hal_queue_handle_t;
-hal_queue_handle_t hal_queue_create(size_t n, size_t sz);
+hal_queue_handle_t hal_queue_create(size_t n, size_t sz, void *buffer);
 #define hal_queue_send(q, m) tu_fifo_write(&q, m)
 #define hal_queue_receive(q, m) tu_fifo_read(&q, m)
 #endif
