@@ -25,6 +25,8 @@ inline uint32_t hal_get_cpu_mhz(void)
   rtc_clk_cpu_freq_get_config(&out_config);
   return out_config.freq_mhz;
 }
+
+#ifdef TIMER_INTERVAL0_SEC
 typedef void (*timer_isr_t)(void *para);
 
 void hal_timer_setup(timer_idx_t timer_num, uint64_t alarm_value, timer_isr_t timer_isr)
@@ -43,9 +45,12 @@ void hal_timer_setup(timer_idx_t timer_num, uint64_t alarm_value, timer_isr_t ti
   timer_isr_register(TIMER_GROUP_0, timer_num, timer_isr, (void *) timer_num, ESP_INTR_FLAG_IRAM, NULL);
   timer_start(TIMER_GROUP_0, timer_num);
 }
+#endif
 
 #define cpu_hal_get_cycle_count xthal_get_ccount
 #else //not ESP32
+
+#ifdef TIMER_INTERVAL0_SEC
 void hal_timer_setup(timer_idx_t timer_num, uint64_t alarm_value, timer_isr_t timer_isr)
 {
 
@@ -54,6 +59,8 @@ void usbhost_timer_cb(void *para)
 {
   usb_process();
 }
+#endif
+
 #endif //ESP32
 
 

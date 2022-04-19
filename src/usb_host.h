@@ -5,7 +5,7 @@
   #define DEBUG_ALL
 #endif
 
-#define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
+//#define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
 
 
 #ifdef ESP32
@@ -14,8 +14,11 @@
 #include "freertos/queue.h"
 #include "soc/timer_group_struct.h"
 #include "driver/periph_ctrl.h"
-#include "driver/timer.h"
 #include "esp32-hal-log.h"
+
+#ifdef TIMER_INTERVAL0_SEC
+#include "driver/timer.h"
+#endif
 
 #if defined ESP_IDF_VERSION_MAJOR && ESP_IDF_VERSION_MAJOR >= 4
   #define USE_NATIVE_GROUP_TIMERS
@@ -31,8 +34,11 @@
 #define      hal_gpio_read(pin) ((GPIO.in>>pin)&1)
 
 #define hal_delay(x) vTaskDelay(x)
+#ifdef TIMER_INTERVAL0_SEC
 #define hal_timer_start(tim) timer_start(TIMER_GROUP_0, tim)
 #define hal_timer_pause(tim) timer_pause(TIMER_GROUP_0, tim)
+#endif
+
 #define hal_queue_send(q, m)  xQueueSend(q, ( void * ) (m), (TickType_t)0)
 #define hal_queue_receive(q, m) xQueueReceive(q, m, 0)
 
@@ -58,6 +64,8 @@ typedef int usb_msg_queue;
 #define hal_queue_send(q, m)
 #define hal_queue_receive(q, m) false
 #define hal_gpio_num_t int
+
+#ifdef TIMER_INTERVAL0_SEC
 #define TIMER_0 0
 #define TIMER_DIVIDER         1
 #define TIMER_BASE_CLK 32768
@@ -66,15 +74,19 @@ void usbhost_timer_cb(void *para);
 #define hal_timer_pause(tim)
 #define portTICK_PERIOD_MS 1
 #define USE_NATIVE_GROUP_TIMERS
+#endif
+
 #define hal_delay(x) delay(x)
 #define fabsf(x) (float)fabs(x)
 #define hal_get_cpu_mhz() 100
 #define cpu_hal_get_cycle_count() 0
 #endif //ESP32
 
+#ifdef TIMER_INTERVAL0_SEC
 #define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
 typedef void (*timer_isr_t)(void *para);
 void hal_timer_setup(timer_idx_t timer_num, uint64_t alarm_value, timer_isr_t timer_isr);
+#endif
 
 // non configured device -  must be zero
 #define  ZERO_USB_ADDRESS   0
@@ -197,6 +209,7 @@ typedef struct
 
 static xQueueHandle timer_queue = NULL;
 
+#ifdef TIMER_INTERVAL0_SEC
 static void IRAM_ATTR usbhost_timer_cb(void *para)
 {
   #if defined USE_NATIVE_GROUP_TIMERS
@@ -228,6 +241,8 @@ static void IRAM_ATTR usbhost_timer_cb(void *para)
     xQueueSendFromISR(timer_queue, &evt, NULL); // Now just send the event data back to the main program task
   #endif
 }
+#endif
+
 #endif
 
 

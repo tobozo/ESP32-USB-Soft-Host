@@ -105,10 +105,16 @@ void setup()
 
 void loop()
 {
-#ifdef ESP32
-  vTaskDelete(NULL);
-#else
+#ifdef TIMER_INTERVAL0_SEC
   yield();
+#else
+  static int t = -1;
+  int tnow = millis();
+  if(tnow != t)
+  {
+    t = tnow;
+    usb_process();
+  }
 #endif
 }
 

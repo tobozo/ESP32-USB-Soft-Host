@@ -20,7 +20,7 @@ extern "C" {
 
 #ifdef ESP32
 static xQueueHandle usb_msg_queue = NULL;
-#define hal_delay(x) vTaskDelay(x)
+#define hal_delay(x) vTaskDelay((x)/portTICK_PERIOD_MS)
 #define hal_timer_pause(tim) timer_pause(TIMER_GROUP_0, tim)
 #define hal_timer_start(tim) timer_start(TIMER_GROUP_0, tim)
 #define hal_queue_receive(q, m) xQueueReceive(q, m, 0)
@@ -176,8 +176,10 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
 
   hal_gpio_pad_select_gpio((hal_gpio_num_t)BLINK_GPIO);
   //hal_gpio_set_direction((hal_gpio_num_t)BLINK_GPIO, GPIO_MODE_OUTPUT);
+#ifdef TIMER_INTERVAL0_SEC
   hal_timer_setup(TIMER_0, (uint64_t) ((double)TIMER_INTERVAL0_SEC * TIMER_SCALE), usbhost_timer_cb);
-  
+#endif
+
   inited = true;
 
   return true;
@@ -234,7 +236,7 @@ void USB_SOFT_HOST::onUSBMessageDecode(uint8_t src, uint8_t len, uint8_t *data)
 
 void (*USB_SOFT_HOST::ticker)() = nullptr;
 
-
+/*
 void USB_SOFT_HOST::TimerPause()
 {
   if( !paused ) {
@@ -258,7 +260,7 @@ void USB_SOFT_HOST::TimerResume()
     log_e("Timer already running!");
   }
 }
-
+*/
 
 
 void USB_SOFT_HOST::TimerTask(void *arg)
@@ -266,7 +268,7 @@ void USB_SOFT_HOST::TimerTask(void *arg)
   while (1) {
     struct USBMessage msg;
 
-    #if !defined USE_NATIVE_GROUP_TIMERS
+    #if !defined(USE_NATIVE_GROUP_TIMERS) && defined(TIMER_INTERVAL0_SEC)
       timer_event_t evt;
       xQueueReceive(timer_queue, &evt, portMAX_DELAY);
     #endif
@@ -278,7 +280,7 @@ void USB_SOFT_HOST::TimerTask(void *arg)
 
     printState();
     if( ticker ) ticker();
-    hal_delay(10 / portTICK_PERIOD_MS);
+    hal_delay(10);
   }
 }
 
