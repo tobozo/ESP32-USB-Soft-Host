@@ -26,6 +26,7 @@
 #define      hal_gpio_set_direction(pin, output) gpio_set_direction(pin, (output) ? GPIO_MODE_OUTPUT: GPIO_MODE_INPUT);
 #define      hal_gpio_set_level(pin, level) gpio_set_level(pin, level)
 #define      hal_gpio_pulldown_en(pin) gpio_pulldown_en(pin)
+#define      hal_gpio_read(pin) ((GPIO.in>>pin)&1)
 
 #define hal_delay(x) vTaskDelay(x)
 #define hal_timer_start(tim) timer_start(TIMER_GROUP_0, tim)
@@ -48,6 +49,8 @@
 #define      hal_gpio_set_direction(pin, output)
 #define      hal_gpio_set_level(pin, level)
 #define      hal_gpio_pulldown_en(pin)
+#define      hal_gpio_read(pin) 0
+
 typedef int usb_msg_queue;
 #define log_d(m) printf(m)
 #define log_e(m) printf(m)

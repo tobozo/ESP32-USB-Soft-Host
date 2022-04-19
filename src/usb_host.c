@@ -114,25 +114,26 @@ static uint8_t _getCycleCount8d8(void)
 }
 
 
-
 #ifdef ESP32
-#define SE_J  { *snd[1][0] = (1 << DM_PIN);*snd[1][1] = (1 << DP_PIN); }
-#define SE_0  { *snd[2][0] = (1 << DM_PIN);*snd[2][1] = (1 << DP_PIN); }
+
+//#define SE_J  { *snd[1][0] = (1 << DM_PIN);*snd[1][1] = (1 << DP_PIN); } //clear / set
+//#define SE_0  { *snd[2][0] = (1 << DM_PIN);*snd[2][1] = (1 << DP_PIN); } //clear / clear
+
 #if CONFIG_IDF_TARGET_ESP32
   #define SET_I(dp, dm) { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[dp]); PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[dm]); GPIO.enable_w1tc = (1 << (dp)) | (1 << (dm));  }
-  #define SET_O(dp, dm) { GPIO.enable_w1ts = (1 << (dp)) | (1 << (dm));  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dp]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dm]);  }
-  #define READ_BOTH_PINS (((GPIO.in&RD_MASK)<<8)>>RD_SHIFT)
+  //#define SET_O(dp, dm) { GPIO.enable_w1ts = (1 << (dp)) | (1 << (dm));  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dp]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dm]);  }
+  //#define READ_BOTH_PINS (((GPIO.in&RD_MASK)<<8)>>RD_SHIFT)
   uint32_t * snd[4][2]  =
   {
-    {&GPIO.out_w1tc,&GPIO.out_w1ts},
-    {&GPIO.out_w1ts,&GPIO.out_w1tc},
-    {&GPIO.out_w1tc,&GPIO.out_w1tc},
-    {&GPIO.out_w1tc,&GPIO.out_w1tc}
+    {&GPIO.out_w1tc,&GPIO.out_w1ts}, //clear / set
+    {&GPIO.out_w1ts,&GPIO.out_w1tc}, //set   / clear
+    {&GPIO.out_w1tc,&GPIO.out_w1tc}, //clear / clear
+    {&GPIO.out_w1tc,&GPIO.out_w1tc}  //clear / clear
   } ;
 #else
   #define SET_I(dp, dm) { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[dp]); PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[dm]);  gpio_ll_output_disable(&GPIO,dm); gpio_ll_output_disable(&GPIO,dp);}
-  #define SET_O(dp, dm) { GPIO.enable_w1ts.val = (1 << (dp)) | (1 << (dm));  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dp]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dm]);  }
-  #define READ_BOTH_PINS (((GPIO.in.val&RD_MASK)<<8)>>RD_SHIFT)
+  //#define SET_O(dp, dm) { GPIO.enable_w1ts.val = (1 << (dp)) | (1 << (dm));  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dp]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dm]);  }
+  //#define READ_BOTH_PINS (((GPIO.in.val&RD_MASK)<<8)>>RD_SHIFT)
   uint32_t * snd[4][2]  =
   {
     {&GPIO.out_w1tc.val,&GPIO.out_w1ts.val},
@@ -142,14 +143,29 @@ static uint8_t _getCycleCount8d8(void)
   } ;
 
 #endif
-#else
-#warning implement SET_I, SET_O
-#define SET_I(dp, dm)
-#define SET_O(dp, dm)
-#define READ_BOTH_PINS 0
-#define SE_0
-#define SE_J
 #endif
+
+#warning assumes DM_PIN > DP_PIN
+#ifndef READ_BOTH_PINS
+#define READ_BOTH_PINS ((hal_gpio_read(DM_PIN) ? 1<<(8+DM_PIN - DP_PIN) : 0) | (hal_gpio_read(DP_PIN) ? 0x100 : 0))
+#endif
+#ifndef SET_I
+#define SET_I(dp, dm)  { hal_gpio_set_direction(dp, 0); hal_gpio_set_direction(dm, 0); }
+#endif
+#ifndef SET_O
+#define SET_O(dp, dm)  { hal_gpio_set_direction(dp, 1); hal_gpio_set_direction(dm, 1); }
+#endif
+#ifndef SE_J 
+#define SE_J { hal_gpio_set_level(DM_PIN, 0); hal_gpio_set_level(DP_PIN, 1); } //clear / set
+#endif
+#ifndef SE_0 
+#define SE_0 { hal_gpio_set_level(DM_PIN, 0); hal_gpio_set_level(DP_PIN, 0); } //clear / clear
+#endif
+
+#define hal_set_differential_gpio_value(dp, dm,v) \
+{ hal_gpio_set_level(dm, v & 1); /*v==0 => clear, v==1 => set,   v == 2 => clear*/ \
+    hal_gpio_set_level(dp, v == 0); } /*v==0 => set  , v==1 => clear, v == 2 => clear */
+
 
 //must be setup ech time with setPins
 uint32_t DP_PIN;
@@ -182,17 +198,6 @@ uint8_t decoded_receive_buffer[DEF_BUFF_SIZE];
 #ifdef ESP32
 void (*delay_pntA)() = NULL;
 #define cpuDelay(x) {(*delay_pntA)();}
-
-
-inline void hal_set_differential_gpio_value(uint32_t dp_mask, uint32_t dm_mask, uint8_t v)
-{
-    #ifdef WR_SIMULTA
-      GPIO.out = sndA[v];
-    #else
-      *snd[v][0] = dm_mask;
-      *snd[v][1] = dp_mask;
-    #endif
-}
 
 
 #if CONFIG_IDF_TARGET_ESP32
@@ -371,8 +376,8 @@ void parseImmed(sUsbContStruct * pcurrent)
   static sIntfDesc     sIntf;
   static HIDDescriptor hid[4];
   static sEPDesc       epd;
-  static int           cfgCount   = 0;
-  static int           sIntfCount   = 0;
+  /*static int           cfgCount   = 0;
+  static int           sIntfCount   = 0;*/
   static int           hidCount   = 0;
   int                  pos = 0;
   #define STDCLASS     0x00
@@ -705,7 +710,7 @@ void sendOnly()
   for(k=0;k<transmit_NRZI_buffer_cnt;k++) {
     //usb_transmit_delay(10);
     cpuDelay(TRANSMIT_TIME_DELAY);
-    hal_set_differential_gpio_value(DP_PIN_M, DM_PIN_M, transmit_NRZI_buffer[k]);
+    hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k]);
   }
   restart();
   SET_I(DP_PIN, DM_PIN);
@@ -1576,12 +1581,12 @@ void printState()
 
   if(pcurrent->ufPrintDesc&4) {
     pcurrent->ufPrintDesc &= ~(uint32_t)4;
-    sCfgDesc lcfg;
-    sIntfDesc sIntf;
     HIDDescriptor hid[4];
+    /*sCfgDesc lcfg;
+    sIntfDesc sIntf;
     sEPDesc epd;
     int cfgCount   = 0;
-    int sIntfCount   = 0;
+    int sIntfCount   = 0;*/
     int hidCount   = 0;
     int pos = 0;
     #define STDCLASS        0x00
