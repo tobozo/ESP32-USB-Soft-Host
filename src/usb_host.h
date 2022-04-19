@@ -42,10 +42,15 @@
 #define hal_timer_pause(tim) timer_pause(TIMER_GROUP_0, tim)
 #endif
 
+#define hal_queue_create xQueueCreate
 #define hal_queue_send(q, m)  xQueueSend(q, ( void * ) (m), (TickType_t)0)
 #define hal_queue_receive(q, m) xQueueReceive(q, m, 0)
 
 #define hal_gpio_num_t gpio_num_t
+
+#define hal_delay(x) vTaskDelay((x)/portTICK_PERIOD_MS)
+#define hal_queue_receive(q, m) xQueueReceive(q, m, 0)
+typedef xQueueHandle hal_queue_handle_t;
 
 #define TIMER_DIVIDER         2  //  Hardware timer clock divider
 
@@ -61,7 +66,8 @@
 #define      hal_gpio_pulldown_en(pin)
 #define      hal_gpio_read(pin) 0
 typedef int timer_idx_t;
-typedef int usb_msg_queue;
+typedef int hal_queue_handle_t;
+
 #define log_d(m) printf(m)
 #define log_e(m) printf(m)
 #define hal_queue_send(q, m)
@@ -208,9 +214,9 @@ typedef struct
       int timer_idx;
       uint64_t timer_counter_value;
   } timer_event_t;
-#endif
 
 static xQueueHandle timer_queue = NULL;
+#endif
 
 #ifdef TIMER_INTERVAL0_SEC
 static void IRAM_ATTR usbhost_timer_cb(void *para)

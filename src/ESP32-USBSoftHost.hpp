@@ -18,18 +18,7 @@ extern "C" {
   #include "usb_host.h"
 }
 
-#ifdef ESP32
-static xQueueHandle usb_msg_queue = NULL;
-#define hal_delay(x) vTaskDelay((x)/portTICK_PERIOD_MS)
-#define hal_timer_pause(tim) timer_pause(TIMER_GROUP_0, tim)
-#define hal_timer_start(tim) timer_start(TIMER_GROUP_0, tim)
-#define hal_queue_receive(q, m) xQueueReceive(q, m, 0)
-#define hal_gpio_num_t gpio_num_t
-#else
-#define USE_NATIVE_GROUP_TIMERS
-#define hal_timer_pause(tim)
-#define hal_gpio_num_t int
-#endif
+static hal_queue_handle_t usb_msg_queue = NULL;
 
 struct USBMessage
 {
@@ -157,20 +146,15 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
 {
   if( inited ) return false;
 
-#ifdef ESP32
   #if !defined USE_NATIVE_GROUP_TIMERS
-    timer_queue = xQueueCreate( 10, sizeof(timer_event_t) );
+    timer_queue = hal_queue_create( 10, sizeof(timer_event_t) );
   #endif
-#endif
 
   setDelay(4);
   
   
-#ifdef ESP32
-  usb_msg_queue = xQueueCreate( 10, sizeof(struct USBMessage) );
-#else
-#warning implement message queue
-#endif
+  usb_msg_queue = hal_queue_create( 10, sizeof(struct USBMessage) );
+
   initStates(
     (hal_gpio_num_t)pconf.dp0, (hal_gpio_num_t)pconf.dm0,
     (hal_gpio_num_t)pconf.dp1, (hal_gpio_num_t)pconf.dm1,
