@@ -2,20 +2,25 @@
 #define __USB_SOFT_HOST_HPP_
 
 #ifndef BLINK_GPIO
+#ifdef ESP32
   #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
     #define BLINK_GPIO 18
   #else
     #define BLINK_GPIO 22
   #endif
+#else
+#define BLINK_GPIO LED_BUILTIN
 #endif
-
+#endif
 
 // include the modified version from Dmitry Samsonov
 extern "C" {
   #include "usb_host.h"
 }
 
+#ifdef ESP32
 static xQueueHandle usb_msg_queue = NULL;
+#endif
 
 struct USBMessage
 {
@@ -122,8 +127,12 @@ bool USB_SOFT_HOST::init( usb_pins_config_t pconf, ondetectcb_t onDetectCB, prin
   //setMessageReceiver(
   USB_SOFT_HOST::setTaskTicker( onTickCB );
   if( _init( pconf ) ) {
+#ifdef ESP32
     xTaskCreatePinnedToCore(USB_SOFT_HOST::TimerTask, "USB Soft Host Timer Task", 8192, NULL, priority, NULL, core);
     log_w("USB Soft Host Group timer task is now running on core #%d with priority %d", core, priority);
+#else
+#warning implement timer task
+#endif
     return true;
   }
   return false;
@@ -135,6 +144,7 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
 {
   if( inited ) return false;
 
+#ifdef ESP32
   timer_config_t config;
   config.divider     = TIMER_DIVIDER;
   config.counter_dir = TIMER_COUNT_UP;
@@ -145,28 +155,37 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
   #if !defined USE_NATIVE_GROUP_TIMERS
     timer_queue = xQueueCreate( 10, sizeof(timer_event_t) );
   #endif
+#else
+#warning implement timer
+#endif
 
   setDelay(4);
-
+  
+  
+#ifdef ESP32
   usb_msg_queue = xQueueCreate( 10, sizeof(struct USBMessage) );
-
+#else
+#warning implement message queue
+#endif
   initStates(
-    (gpio_num_t)pconf.dp0, (gpio_num_t)pconf.dm0,
-    (gpio_num_t)pconf.dp1, (gpio_num_t)pconf.dm1,
-    (gpio_num_t)pconf.dp2, (gpio_num_t)pconf.dm2,
-    (gpio_num_t)pconf.dp3, (gpio_num_t)pconf.dm3
+    (hal_gpio_num_t)pconf.dp0, (hal_gpio_num_t)pconf.dm0,
+    (hal_gpio_num_t)pconf.dp1, (hal_gpio_num_t)pconf.dm1,
+    (hal_gpio_num_t)pconf.dp2, (hal_gpio_num_t)pconf.dm2,
+    (hal_gpio_num_t)pconf.dp3, (hal_gpio_num_t)pconf.dm3
   );
 
-  gpio_pad_select_gpio((gpio_num_t)BLINK_GPIO);
-  //gpio_set_direction((gpio_num_t)BLINK_GPIO, GPIO_MODE_OUTPUT);
-
+  hal_gpio_pad_select_gpio((hal_gpio_num_t)BLINK_GPIO);
+  //hal_gpio_set_direction((hal_gpio_num_t)BLINK_GPIO, GPIO_MODE_OUTPUT);
+#ifdef ESP32
   timer_init(TIMER_GROUP_0, TIMER_0, &config);
   timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x00000000ULL);
   timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (double)TIMER_INTERVAL0_SEC * TIMER_SCALE);
   timer_enable_intr(TIMER_GROUP_0, TIMER_0);
   timer_isr_register(TIMER_GROUP_0, TIMER_0, timer_group0_isr, (void *) TIMER_0, ESP_INTR_FLAG_IRAM, NULL);
   timer_start(TIMER_GROUP_0, TIMER_0);
-
+#else
+#warning implement timer
+#endif
   inited = true;
 
   return true;
@@ -216,7 +235,7 @@ void USB_SOFT_HOST::onUSBMessageDecode(uint8_t src, uint8_t len, uint8_t *data)
   for(int k=0;k<msg.len;k++) {
     msg.data[k] = data[k];
   }
-  xQueueSend( usb_msg_queue, ( void * ) &msg,(TickType_t)0 );
+  hal_queue_send( usb_msg_queue, &msg);
 }
 
 
@@ -228,9 +247,9 @@ void USB_SOFT_HOST::TimerPause()
 {
   if( !paused ) {
     log_d("Pausing timer");
-    timer_pause(TIMER_GROUP_0, TIMER_0);
+    hal_timer_pause(TIMER_0);
     paused = true;
-    vTaskDelay(1);
+    hal_delay(1);
   } else {
     log_e("Timer already paused!");
   }
@@ -240,9 +259,9 @@ void USB_SOFT_HOST::TimerResume()
 {
   if( paused ) {
     log_d("Resuming timer");
-    timer_start(TIMER_GROUP_0, TIMER_0);
+    hal_timer_start(TIMER_0);
     paused = false;
-    vTaskDelay(1);
+    hal_delay(1);
   } else {
     log_e("Timer already running!");
   }
@@ -259,8 +278,7 @@ void USB_SOFT_HOST::TimerTask(void *arg)
       timer_event_t evt;
       xQueueReceive(timer_queue, &evt, portMAX_DELAY);
     #endif
-
-    if( xQueueReceive(usb_msg_queue, &msg, 0) ) {
+    if( hal_queue_receive(usb_msg_queue, &msg) ) {
       if( printDataCB ) {
         printDataCB( msg.src/4, 32, msg.data, msg.len );
       }
@@ -268,7 +286,7 @@ void USB_SOFT_HOST::TimerTask(void *arg)
 
     printState();
     if( ticker ) ticker();
-    vTaskDelay(10 / portTICK_PERIOD_MS);
+    hal_delay(10 / portTICK_PERIOD_MS);
   }
 }
 

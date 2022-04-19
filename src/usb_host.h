@@ -1,6 +1,12 @@
 #ifndef  USB_HOST_H
 #define USB_HOST_H
 
+#if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_DEBUG
+  #define DEBUG_ALL
+#endif
+
+
+#ifdef ESP32
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -9,11 +15,6 @@
 #include "driver/timer.h"
 #include "esp32-hal-log.h"
 
-#if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_DEBUG
-  #define DEBUG_ALL
-#endif
-
-
 #if defined ESP_IDF_VERSION_MAJOR && ESP_IDF_VERSION_MAJOR >= 4
   #define USE_NATIVE_GROUP_TIMERS
 #else
@@ -21,9 +22,49 @@
 #endif
 
 
+#define      hal_gpio_pad_select_gpio(pin) gpio_pad_select_gpio(pin)
+#define      hal_gpio_set_direction(pin, output) gpio_set_direction(pin, (output) ? GPIO_MODE_OUTPUT: GPIO_MODE_INPUT);
+#define      hal_gpio_set_level(pin, level) gpio_set_level(pin, level)
+#define      hal_gpio_pulldown_en(pin) gpio_pulldown_en(pin)
+
+#define hal_delay(x) vTaskDelay(x)
+#define hal_timer_start(tim) timer_start(TIMER_GROUP_0, tim)
+#define hal_timer_pause(tim) timer_pause(TIMER_GROUP_0, tim)
+#define hal_queue_send(q, m)  xQueueSend(q, ( void * ) (m), (TickType_t)0)
+#define hal_queue_receive(q, m) xQueueReceive(q, m, 0)
+
+#define hal_gpio_num_t gpio_num_t
+
 #define TIMER_DIVIDER         2  //  Hardware timer clock divider
 #define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
 #define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
+#else
+#include <math.h>
+#undef IRAM_ATTR
+#define IRAM_ATTR
+
+
+#define      hal_gpio_pad_select_gpio(pin)
+#define      hal_gpio_set_direction(pin, output)
+#define      hal_gpio_set_level(pin, level)
+#define      hal_gpio_pulldown_en(pin)
+typedef int usb_msg_queue;
+#define log_d(m) printf(m)
+#define log_e(m) printf(m)
+#define hal_queue_send(q, m)
+#define hal_queue_receive(q, m) false
+#define hal_gpio_num_t int
+#define TIMER_0 0
+#define hal_timer_start(tim)
+#define hal_timer_pause(tim)
+#define portTICK_PERIOD_MS 1
+#define USE_NATIVE_GROUP_TIMERS
+#define hal_delay(x) delay(x)
+#define fabsf(x) (float)fabs(x)
+#define hal_get_cpu_mhz() 100
+#define cpu_hal_get_cycle_count() 0
+#endif
+
 // non configured device -  must be zero
 #define  ZERO_USB_ADDRESS   0
 // any number less 127, but no zero
@@ -132,7 +173,7 @@ typedef struct
 
 
 
-
+#ifdef ESP32
 #if !defined USE_NATIVE_GROUP_TIMERS
   typedef struct
   {
@@ -176,7 +217,7 @@ static void IRAM_ATTR timer_group0_isr(void *para)
     xQueueSendFromISR(timer_queue, &evt, NULL); // Now just send the event data back to the main program task
   #endif
 }
-
+#endif
 
 
 #endif

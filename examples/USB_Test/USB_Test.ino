@@ -105,7 +105,11 @@ void setup()
 
 void loop()
 {
+#ifdef ESP32
   vTaskDelete(NULL);
+#else
+  yield();
+#endif
 }
 
 
