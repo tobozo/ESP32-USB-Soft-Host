@@ -42,6 +42,7 @@
 #define hal_timer_pause(tim) timer_pause(TIMER_GROUP_0, tim)
 #endif
 
+typedef xQueueHandle hal_queue_handle_t;
 #define hal_queue_create xQueueCreate
 #define hal_queue_send(q, m)  xQueueSend(q, ( void * ) (m), (TickType_t)0)
 #define hal_queue_receive(q, m) xQueueReceive(q, m, 0)
@@ -49,8 +50,7 @@
 #define hal_gpio_num_t gpio_num_t
 
 #define hal_delay(x) vTaskDelay((x)/portTICK_PERIOD_MS)
-#define hal_queue_receive(q, m) xQueueReceive(q, m, 0)
-typedef xQueueHandle hal_queue_handle_t;
+
 
 #define TIMER_DIVIDER         2  //  Hardware timer clock divider
 
@@ -66,10 +66,11 @@ typedef xQueueHandle hal_queue_handle_t;
 #define      hal_gpio_pulldown_en(pin)
 #define      hal_gpio_read(pin) 0
 typedef int timer_idx_t;
-typedef int hal_queue_handle_t;
+typedef void *hal_queue_handle_t;
 
 #define log_d(m) printf(m)
 #define log_e(m) printf(m)
+hal_queue_handle_t hal_queue_create(size_t n, size_t sz);
 #define hal_queue_send(q, m)
 #define hal_queue_receive(q, m) false
 #define hal_gpio_num_t int

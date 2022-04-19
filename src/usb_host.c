@@ -59,6 +59,12 @@ void usbhost_timer_cb(void *para)
 {
   usb_process();
 }
+
+hal_queue_handle_t hal_queue_create(size_t n, size_t sz)
+{
+  return NULL;
+}
+
 #endif
 
 #endif //ESP32
@@ -291,8 +297,20 @@ void setDelay(uint8_t ticks)
     while(1) { vTaskDelay(1); }
   }
 }
-#else
-#warning implement cpuDelay / setDelay
+#else //not ESP32
+
+void setDelay(uint8_t ticks) {}
+void cpuDelay(uint8_t x)
+{
+ uint32_t t0 = cpu_hal_get_cycle_count();
+ for(;;)
+ {
+   uint32_t t1 =  cpu_hal_get_cycle_count();
+   t1 -= t0;
+   if(t1 > x)
+     break;
+  }
+}
 #endif
 
 
