@@ -7,6 +7,8 @@
 #include <sys/time.h>
 #include <string.h>
 
+
+#include "usb_host.h"
 #ifdef ESP32
 #include "driver/gpio.h"
 #include "sdkconfig.h"
@@ -19,12 +21,41 @@
 
 inline uint32_t hal_get_cpu_mhz(void)
 {
-        rtc_cpu_freq_config_t  out_config;
-        rtc_clk_cpu_freq_get_config(&out_config);
-        return out_config.freq_mhz;
+  rtc_cpu_freq_config_t  out_config;
+  rtc_clk_cpu_freq_get_config(&out_config);
+  return out_config.freq_mhz;
+}
+typedef void (*timer_isr_t)(void *para);
+
+void hal_timer_setup(timer_idx_t timer_num, uint64_t alarm_value, timer_isr_t timer_isr)
+{
+  timer_config_t config;
+  config.divider     = TIMER_DIVIDER;
+  config.counter_dir = TIMER_COUNT_UP;
+  config.counter_en  = TIMER_PAUSE;
+  config.alarm_en    = TIMER_ALARM_EN;
+  config.auto_reload = (timer_autoreload_t) 1; // fix for ¬invalid conversion from 'int' to 'timer_autoreload_t'¬ thanks rudi ;-)
+
+  timer_init(TIMER_GROUP_0, timer_num, &config);
+  timer_set_counter_value(TIMER_GROUP_0, timer_num, 0x00000000ULL);
+  timer_set_alarm_value(TIMER_GROUP_0, timer_num, alarm_value);
+  timer_enable_intr(TIMER_GROUP_0, timer_num);
+  timer_isr_register(TIMER_GROUP_0, timer_num, timer_isr, (void *) timer_num, ESP_INTR_FLAG_IRAM, NULL);
+  timer_start(TIMER_GROUP_0, timer_num);
 }
 
-#endif
+#define cpu_hal_get_cycle_count xthal_get_ccount
+#else //not ESP32
+void hal_timer_setup(timer_idx_t timer_num, uint64_t alarm_value, timer_isr_t timer_isr)
+{
+
+}
+void usbhost_timer_cb(void *para)
+{
+  usb_process();
+}
+#endif //ESP32
+
 
 /*******************************
 *    warning!!!: any copy of this code or his part must include this:
@@ -42,9 +73,6 @@ inline uint32_t hal_get_cpu_mhz(void)
      - Arduino IDE compliance (mostly code regression to esp-idf 3.x)
      - Added callbacks (data and device detection)
 \*/
-
-
-#include "usb_host.h"
 
 // Arduino IDE complains about volatile at init, but we don't care
 #pragma GCC diagnostic ignored "-Wdiscarded-qualifiers"
@@ -96,11 +124,6 @@ int TM_OUT              = 64;    //receive time out no activity on bus
   #define TOUT  (TM_OUT)
 #endif
 
-#ifdef ESP32
-#define cpu_hal_get_cycle_count xthal_get_ccount
-#else
-#warning implement cpu_hal_get_cycle_count
-#endif
 
 static uint32_t _getCycleCount32()
 {

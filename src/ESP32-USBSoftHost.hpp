@@ -20,6 +20,15 @@ extern "C" {
 
 #ifdef ESP32
 static xQueueHandle usb_msg_queue = NULL;
+#define hal_delay(x) vTaskDelay(x)
+#define hal_timer_pause(tim) timer_pause(TIMER_GROUP_0, tim)
+#define hal_timer_start(tim) timer_start(TIMER_GROUP_0, tim)
+#define hal_queue_receive(q, m) xQueueReceive(q, m, 0)
+#define hal_gpio_num_t gpio_num_t
+#else
+#define USE_NATIVE_GROUP_TIMERS
+#define hal_timer_pause(tim)
+#define hal_gpio_num_t int
 #endif
 
 struct USBMessage
@@ -145,18 +154,9 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
   if( inited ) return false;
 
 #ifdef ESP32
-  timer_config_t config;
-  config.divider     = TIMER_DIVIDER;
-  config.counter_dir = TIMER_COUNT_UP;
-  config.counter_en  = TIMER_PAUSE;
-  config.alarm_en    = TIMER_ALARM_EN;
-  config.auto_reload = (timer_autoreload_t) 1; // fix for ¬invalid conversion from 'int' to 'timer_autoreload_t'¬ thanks rudi ;-)
-
   #if !defined USE_NATIVE_GROUP_TIMERS
     timer_queue = xQueueCreate( 10, sizeof(timer_event_t) );
   #endif
-#else
-#warning implement timer
 #endif
 
   setDelay(4);
@@ -176,16 +176,8 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
 
   hal_gpio_pad_select_gpio((hal_gpio_num_t)BLINK_GPIO);
   //hal_gpio_set_direction((hal_gpio_num_t)BLINK_GPIO, GPIO_MODE_OUTPUT);
-#ifdef ESP32
-  timer_init(TIMER_GROUP_0, TIMER_0, &config);
-  timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x00000000ULL);
-  timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (double)TIMER_INTERVAL0_SEC * TIMER_SCALE);
-  timer_enable_intr(TIMER_GROUP_0, TIMER_0);
-  timer_isr_register(TIMER_GROUP_0, TIMER_0, timer_group0_isr, (void *) TIMER_0, ESP_INTR_FLAG_IRAM, NULL);
-  timer_start(TIMER_GROUP_0, TIMER_0);
-#else
-#warning implement timer
-#endif
+  hal_timer_setup(TIMER_0, (uint64_t) ((double)TIMER_INTERVAL0_SEC * TIMER_SCALE), usbhost_timer_cb);
+  
   inited = true;
 
   return true;

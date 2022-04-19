@@ -1,9 +1,11 @@
-#ifndef  USB_HOST_H
+#ifndef USB_HOST_H
 #define USB_HOST_H
 
 #if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_DEBUG
   #define DEBUG_ALL
 #endif
+
+#define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
 
 
 #ifdef ESP32
@@ -37,9 +39,8 @@
 #define hal_gpio_num_t gpio_num_t
 
 #define TIMER_DIVIDER         2  //  Hardware timer clock divider
-#define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
-#define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
-#else
+
+#else //not ESP32
 #include <math.h>
 #undef IRAM_ATTR
 #define IRAM_ATTR
@@ -50,7 +51,7 @@
 #define      hal_gpio_set_level(pin, level)
 #define      hal_gpio_pulldown_en(pin)
 #define      hal_gpio_read(pin) 0
-
+typedef int timer_idx_t;
 typedef int usb_msg_queue;
 #define log_d(m) printf(m)
 #define log_e(m) printf(m)
@@ -58,6 +59,9 @@ typedef int usb_msg_queue;
 #define hal_queue_receive(q, m) false
 #define hal_gpio_num_t int
 #define TIMER_0 0
+#define TIMER_DIVIDER         1
+#define TIMER_BASE_CLK 32768
+void usbhost_timer_cb(void *para);
 #define hal_timer_start(tim)
 #define hal_timer_pause(tim)
 #define portTICK_PERIOD_MS 1
@@ -66,7 +70,11 @@ typedef int usb_msg_queue;
 #define fabsf(x) (float)fabs(x)
 #define hal_get_cpu_mhz() 100
 #define cpu_hal_get_cycle_count() 0
-#endif
+#endif //ESP32
+
+#define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
+typedef void (*timer_isr_t)(void *para);
+void hal_timer_setup(timer_idx_t timer_num, uint64_t alarm_value, timer_isr_t timer_isr);
 
 // non configured device -  must be zero
 #define  ZERO_USB_ADDRESS   0
@@ -189,7 +197,7 @@ typedef struct
 
 static xQueueHandle timer_queue = NULL;
 
-static void IRAM_ATTR timer_group0_isr(void *para)
+static void IRAM_ATTR usbhost_timer_cb(void *para)
 {
   #if defined USE_NATIVE_GROUP_TIMERS
     timer_group_clr_intr_status_in_isr(TIMER_GROUP_0, TIMER_0);
