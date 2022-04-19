@@ -10,16 +10,20 @@
 #endif
 
 #define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
+#define USE_TUSB_FIFO
+#ifdef USE_TUSB_FIFO
+#include <tusb_fifo.h> //use TinyUSB queues
+#endif
 
 #ifdef ESP32
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include "soc/timer_group_struct.h"
 #include "driver/periph_ctrl.h"
 #include "esp32-hal-log.h"
 
 #ifdef TIMER_INTERVAL0_SEC
+#include "soc/timer_group_struct.h"
 #include "driver/timer.h"
 #endif
 
@@ -42,10 +46,12 @@
 #define hal_timer_pause(tim) timer_pause(TIMER_GROUP_0, tim)
 #endif
 
+#ifndef USE_TUSB_FIFO
 typedef xQueueHandle hal_queue_handle_t;
 #define hal_queue_create xQueueCreate
 #define hal_queue_send(q, m)  xQueueSend(q, ( void * ) (m), (TickType_t)0)
 #define hal_queue_receive(q, m) xQueueReceive(q, m, 0)
+#endif
 
 #define hal_gpio_num_t gpio_num_t
 
@@ -66,15 +72,9 @@ typedef xQueueHandle hal_queue_handle_t;
 #define      hal_gpio_pulldown_en(pin)
 #define      hal_gpio_read(pin) 0
 typedef int timer_idx_t;
-typedef void *hal_queue_handle_t;
-
 #define log_d(m) printf(m)
 #define log_e(m) printf(m)
-hal_queue_handle_t hal_queue_create(size_t n, size_t sz);
-#define hal_queue_send(q, m)
-#define hal_queue_receive(q, m) false
 #define hal_gpio_num_t int
-
 #ifdef TIMER_INTERVAL0_SEC
 #define TIMER_0 0
 #define TIMER_DIVIDER         1
@@ -91,6 +91,13 @@ void usbhost_timer_cb(void *para);
 #define hal_get_cpu_mhz() 100
 #define cpu_hal_get_cycle_count() 0
 #endif //ESP32
+
+#ifdef USE_TUSB_FIFO
+typedef tu_fifo_t hal_queue_handle_t;
+hal_queue_handle_t hal_queue_create(size_t n, size_t sz);
+#define hal_queue_send(q, m) tu_fifo_write(&q, m)
+#define hal_queue_receive(q, m) tu_fifo_read(&q, m)
+#endif
 
 #ifdef TIMER_INTERVAL0_SEC
 #define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds

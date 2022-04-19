@@ -18,7 +18,7 @@ extern "C" {
   #include "usb_host.h"
 }
 
-static hal_queue_handle_t usb_msg_queue = NULL;
+static hal_queue_handle_t usb_msg_queue;
 
 struct USBMessage
 {
@@ -146,9 +146,6 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
 {
   if( inited ) return false;
 
-  #if !defined USE_NATIVE_GROUP_TIMERS
-    timer_queue = hal_queue_create( 10, sizeof(timer_event_t) );
-  #endif
 
   setDelay(4);
   
@@ -165,6 +162,9 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
   hal_gpio_pad_select_gpio((hal_gpio_num_t)BLINK_GPIO);
   //hal_gpio_set_direction((hal_gpio_num_t)BLINK_GPIO, GPIO_MODE_OUTPUT);
 #ifdef TIMER_INTERVAL0_SEC
+  #if !defined USE_NATIVE_GROUP_TIMERS && defined(ESP32)
+  timer_queue = xQueueCreate( 10, sizeof(timer_event_t) );
+  #endif
   hal_timer_setup(TIMER_0, (uint64_t) ((double)TIMER_INTERVAL0_SEC * TIMER_SCALE), usbhost_timer_cb);
 #endif
 

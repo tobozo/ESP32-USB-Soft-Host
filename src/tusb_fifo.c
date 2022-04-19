@@ -25,7 +25,7 @@
  * This file is part of the TinyUSB stack.
  */
 
-#include "osal/osal.h"
+//#include "osal/osal.h"  //OS services not used
 #include "tusb_fifo.h"
 
 // Supress IAR warning

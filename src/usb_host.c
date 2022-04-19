@@ -59,15 +59,22 @@ void usbhost_timer_cb(void *para)
 {
   usb_process();
 }
-
-hal_queue_handle_t hal_queue_create(size_t n, size_t sz)
-{
-  return NULL;
-}
-
 #endif
 
 #endif //ESP32
+
+#ifdef USE_TUSB_FIFO
+hal_queue_handle_t hal_queue_create(size_t n, size_t sz)
+{
+  tu_fifo_t f;
+  memset(&f, 0, sizeof(f));
+  static uint8_t buffer[4096];
+#warning FIXME: queue fifo should be provided! it's a *BUG* to share it 
+  if(n * sz <= sizeof(buffer))
+    tu_fifo_config(&f, buffer, n, sz, true);
+  return f;
+}
+#endif
 
 
 /*******************************

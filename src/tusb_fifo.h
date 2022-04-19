@@ -41,7 +41,13 @@ extern "C" {
 // read pointers can be updated from within a DMA ISR. Overflows are detectable
 // within a certain number (see tu_fifo_overflow()).
 
-#include "common/tusb_common.h"
+//#include "common/tusb_common.h"
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#ifndef TU_ATTR_ALWAYS_INLINE
+#define TU_ATTR_ALWAYS_INLINE __attribute__((always_inline))
+#endif
 
 // mutex is only needed for RTOS
 // for OS None, we don't get preempted
