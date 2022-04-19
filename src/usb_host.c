@@ -1374,13 +1374,7 @@ int checkPins(int dp,int dm)
 
 int64_t get_system_time_us()
 {
-#ifdef ESP32
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  return (tv.tv_sec * 1000000LL + (tv.tv_usec ));
-#else
   return micros(); 
-#endif
 }
 
 
