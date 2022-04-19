@@ -107,7 +107,23 @@ void loop()
 {
 #ifdef TIMER_INTERVAL0_SEC
   yield();
+
+#ifdef USBHOST_SINGLE_CORE
+    struct USBMessage msg;
+    if( hal_queue_receive(usb_msg_queue, &msg) ) {
+      if( printDataCB ) {
+        printDataCB( msg.src/4, 32, msg.data, msg.len );
+      }
+    }
+    printState();
+#endif
+    
 #else
+
+#ifdef USBHOST_SINGLE_CORE
+#error USBHOST_SINGLE_CORE is not compatible with polling
+#endif
+
   static int t = -1;
   int tnow = millis();
   if(tnow != t)

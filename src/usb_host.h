@@ -1,12 +1,15 @@
 #ifndef USB_HOST_H
 #define USB_HOST_H
 
+#define USBHOST_SINGLE_CORE
+
+#ifndef USBHOST_SINGLE_CORE
 #if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_DEBUG
   #define DEBUG_ALL
 #endif
+#endif
 
-//#define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
-
+#define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
 
 #ifdef ESP32
 #include "freertos/FreeRTOS.h"

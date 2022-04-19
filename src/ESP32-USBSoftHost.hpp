@@ -123,7 +123,9 @@ class USB_SOFT_HOST
     void setUSBMessageCb( onusbmesscb_t onMessageCB );
     static void onUSBMessageDecode(uint8_t src, uint8_t len, uint8_t *data);
     static void (*ticker)();
+#ifndef USBHOST_SINGLE_CORE
     static void TimerTask(void *arg);
+#endif
 };
 
 
@@ -136,11 +138,13 @@ bool USB_SOFT_HOST::init( usb_pins_config_t pconf, ondetectcb_t onDetectCB, prin
   //setMessageReceiver(
   USB_SOFT_HOST::setTaskTicker( onTickCB );
   if( _init( pconf ) ) {
+#ifndef USBHOST_SINGLE_CORE
 #ifdef ESP32
     xTaskCreatePinnedToCore(USB_SOFT_HOST::TimerTask, "USB Soft Host Timer Task", 8192, NULL, priority, NULL, core);
     log_w("USB Soft Host Group timer task is now running on core #%d with priority %d", core, priority);
 #else
 #warning implement timer task
+#endif
 #endif
     return true;
   }
@@ -262,7 +266,7 @@ void USB_SOFT_HOST::TimerResume()
 }
 */
 
-
+#ifndef USBHOST_SINGLE_CORE
 void USB_SOFT_HOST::TimerTask(void *arg)
 {
   while (1) {
@@ -283,7 +287,7 @@ void USB_SOFT_HOST::TimerTask(void *arg)
     hal_delay(10);
   }
 }
-
+#endif
 
 USB_SOFT_HOST USH;
 
