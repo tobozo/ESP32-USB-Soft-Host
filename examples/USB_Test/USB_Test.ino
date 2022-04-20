@@ -28,11 +28,16 @@
   #define PROFILE_NAME "ESP32 C3 Dev module"
   #define DP_P0   6
   #define DM_P0   8
-#else
+#elif defined(ESP32)
   // default pins tested on ESP32-Wroom
   #define PROFILE_NAME "Default Wroom"
   #define DP_P0  12  // always enabled
   #define DM_P0  14  // always enabled
+#else
+  // Teensy
+  #define PROFILE_NAME "Teensy"
+  #define DP_P0  22
+  #define DM_P0  23
 #endif
 
 #ifndef DP_P1
@@ -134,5 +139,16 @@ void loop()
 #endif
 }
 
+#if defined(TIMER_INTERVAL0_SEC) && !defined(ESP32)
+void hal_timer_setup(timer_idx_t timer_num, uint32_t alarm_value, timer_isr_t timer_isr)
+{
+  static IntervalTimer tim;
+  tim.begin(timer_isr, alarm_value); //microseconds
+}
+#endif
 
-
+extern "C" int _write(int file, char *ptr, int len) //for printf
+{
+  Serial.write(ptr, len);
+  return 0;
+}

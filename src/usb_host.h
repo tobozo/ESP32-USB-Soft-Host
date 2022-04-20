@@ -40,11 +40,11 @@
 #define      hal_gpio_pulldown_en(pin) gpio_pulldown_en(pin)
 #define      hal_gpio_read(pin) ((GPIO.in>>pin)&1)
 
-#define hal_delay(x) vTaskDelay(x)
-#ifdef TIMER_INTERVAL0_SEC
-#define hal_timer_start(tim) timer_start(TIMER_GROUP_0, tim)
-#define hal_timer_pause(tim) timer_pause(TIMER_GROUP_0, tim)
-#endif
+
+//#ifdef TIMER_INTERVAL0_SEC
+//#define hal_timer_start(tim) timer_start(TIMER_GROUP_0, tim)
+//#define hal_timer_pause(tim) timer_pause(TIMER_GROUP_0, tim)
+//#endif
 
 #ifndef USE_TUSB_FIFO
 typedef xQueueHandle hal_queue_handle_t;
@@ -59,37 +59,38 @@ typedef xQueueHandle hal_queue_handle_t;
 
 
 #define TIMER_DIVIDER         2  //  Hardware timer clock divider
-
+#define TIMER_CB_HAS_PARAM
 #else //not ESP32
 #include <math.h>
 #undef IRAM_ATTR
 #define IRAM_ATTR
 
-
+#define GPIO_MODE_OUTPUT OUTPUT
+#define GPIO_MODE_INPUT INPUT
 #define      hal_gpio_pad_select_gpio(pin)
-#define      hal_gpio_set_direction(pin, output)
-#define      hal_gpio_set_level(pin, level)
+#define      hal_gpio_set_direction(pin, output) pinMode(pin, output ? OUTPUT : INPUT_PULLDOWN)
+#define      hal_gpio_set_level(pin, level) digitalWrite(pin, level ? HIGH : LOW)
 #define      hal_gpio_pulldown_en(pin)
-#define      hal_gpio_read(pin) 0
+#define      hal_gpio_read(pin) digitalRead(pin)
 typedef int timer_idx_t;
 #define log_d(m) printf(m)
 #define log_e(m) printf(m)
 #define hal_gpio_num_t int
 #ifdef TIMER_INTERVAL0_SEC
 #define TIMER_0 0
-#define TIMER_DIVIDER         1
-#define TIMER_BASE_CLK 32768
-void usbhost_timer_cb(void *para);
-#define hal_timer_start(tim)
-#define hal_timer_pause(tim)
+#define TIMER_DIVIDER  1
+#define TIMER_BASE_CLK 1000000
+//#define hal_timer_start(tim)
+//#define hal_timer_pause(tim)
 #define portTICK_PERIOD_MS 1
 #define USE_NATIVE_GROUP_TIMERS
+#define usbhost_timer_cb usb_process
 #endif
 
 #define hal_delay(x) delay(x)
 #define fabsf(x) (float)fabs(x)
-#define hal_get_cpu_mhz() 100
-#define cpu_hal_get_cycle_count() 0
+#define hal_get_cpu_mhz() (F_CPU/1000000)
+#define cpu_hal_get_cycle_count() ARM_DWT_CYCCNT
 #endif //ESP32
 
 #ifdef USE_TUSB_FIFO
@@ -101,8 +102,12 @@ hal_queue_handle_t hal_queue_create(size_t n, size_t sz, void *buffer);
 
 #ifdef TIMER_INTERVAL0_SEC
 #define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
+#ifdef TIMER_CB_HAS_PARAM
 typedef void (*timer_isr_t)(void *para);
-void hal_timer_setup(timer_idx_t timer_num, uint64_t alarm_value, timer_isr_t timer_isr);
+#else
+typedef void (*timer_isr_t)();
+#endif
+void hal_timer_setup(timer_idx_t timer_num, uint32_t alarm_value, timer_isr_t timer_isr);
 #endif
 
 // non configured device -  must be zero
@@ -124,7 +129,7 @@ void set_onled_blink_cb( onledblinkcb_t cb );
 #define  NUM_USB 4
 
 void initStates( int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3);
-void setDelay(uint8_t ticks);
+void setDelay(uint16_t ticks);
 uint8_t usbGetFlags(int _usb_num);
 void usbSetFlags(int _usb_num,uint8_t flags);
 

@@ -29,7 +29,7 @@ inline uint32_t hal_get_cpu_mhz(void)
 #ifdef TIMER_INTERVAL0_SEC
 typedef void (*timer_isr_t)(void *para);
 
-void hal_timer_setup(timer_idx_t timer_num, uint64_t alarm_value, timer_isr_t timer_isr)
+void hal_timer_setup(timer_idx_t timer_num, uint32_t alarm_value, timer_isr_t timer_isr)
 {
   timer_config_t config;
   config.divider     = TIMER_DIVIDER;
@@ -48,19 +48,8 @@ void hal_timer_setup(timer_idx_t timer_num, uint64_t alarm_value, timer_isr_t ti
 #endif
 
 #define cpu_hal_get_cycle_count xthal_get_ccount
-#else //not ESP32
-
-#ifdef TIMER_INTERVAL0_SEC
-void hal_timer_setup(timer_idx_t timer_num, uint64_t alarm_value, timer_isr_t timer_isr)
-{
-
-}
-void usbhost_timer_cb(void *para)
-{
-  usb_process();
-}
-#endif
-
+#else
+#include <Arduino.h>
 #endif //ESP32
 
 #ifdef USE_TUSB_FIFO
@@ -282,9 +271,11 @@ void (*delay_pntA)() = NULL;
 #endif
 
 
-void setDelay(uint8_t ticks)
+void setDelay(uint16_t ticks)
 {
   uint8_t* pntS;
+  if(ticks > MAX_DELAY_CODE_SIZE)
+    ticks = MAX_DELAY_CODE_SIZE;
   // it can't execute but can read & write
   if(!delay_pntA) {
     pntS = SDELAYMALLOC( MAX_DELAY_CODE_SIZE );
@@ -303,8 +294,8 @@ void setDelay(uint8_t ticks)
 }
 #else //not ESP32
 
-void setDelay(uint8_t ticks) {}
-void cpuDelay(uint8_t x)
+void setDelay(uint16_t ticks) {}
+void cpuDelay(uint16_t x)
 {
  uint32_t t0 = cpu_hal_get_cycle_count();
  for(;;)
@@ -1501,9 +1492,9 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
       if(!calibrated) {
         //calibrate delay divide 2
         #define DELAY_CORR 2
-        int  uTime = 254;
-        int  dTime = 0;
         int freq_mhz = hal_get_cpu_mhz();
+        int  uTime = freq_mhz+20;
+        int  dTime = 0;
         printf("cpu freq = %d MHz\n", freq_mhz);
         TM_OUT = freq_mhz/2;
         // 8  - func divided clock to 8, 1.5 - MHz USB LS
