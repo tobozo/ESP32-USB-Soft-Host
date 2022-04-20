@@ -35,7 +35,8 @@
 
 
 #define      hal_gpio_pad_select_gpio(pin) gpio_pad_select_gpio(pin)
-#define      hal_gpio_set_direction(pin, output) gpio_set_direction(pin, (output) ? GPIO_MODE_OUTPUT: GPIO_MODE_INPUT);
+//#define      hal_gpio_set_direction(pin, output) gpio_set_direction(pin, (output) ? GPIO_MODE_OUTPUT: GPIO_MODE_INPUT);
+#define      hal_gpio_set_direction(pin, output) if(output) { GPIO.enable_w1ts = 1 << (pin); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[pin]); } else { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[pin]); GPIO.enable_w1tc = (1 << (pin)); }
 #define      hal_gpio_set_level(pin, level) gpio_set_level(pin, level)
 #define      hal_gpio_pulldown_en(pin) gpio_pulldown_en(pin)
 #define      hal_gpio_read(pin) ((GPIO.in>>pin)&1)

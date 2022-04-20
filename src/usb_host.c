@@ -143,15 +143,15 @@ static uint8_t _getCycleCount8d8(void)
 }
 
 
-#ifdef ESP32
+#if 0//def ESP32
 
 //#define SE_J  { *snd[1][0] = (1 << DM_PIN);*snd[1][1] = (1 << DP_PIN); } //clear / set
 //#define SE_0  { *snd[2][0] = (1 << DM_PIN);*snd[2][1] = (1 << DP_PIN); } //clear / clear
 
 #if CONFIG_IDF_TARGET_ESP32
   #define SET_I(dp, dm) { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[dp]); PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[dm]); GPIO.enable_w1tc = (1 << (dp)) | (1 << (dm));  }
-  //#define SET_O(dp, dm) { GPIO.enable_w1ts = (1 << (dp)) | (1 << (dm));  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dp]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dm]);  }
-  //#define READ_BOTH_PINS (((GPIO.in&RD_MASK)<<8)>>RD_SHIFT)
+  #define SET_O(dp, dm) { GPIO.enable_w1ts = (1 << (dp)) | (1 << (dm));  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dp]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dm]);  }
+  #define READ_BOTH_PINS (((GPIO.in&RD_MASK)<<8)>>RD_SHIFT)
   uint32_t * snd[4][2]  =
   {
     {&GPIO.out_w1tc,&GPIO.out_w1ts}, //clear / set
@@ -160,9 +160,12 @@ static uint8_t _getCycleCount8d8(void)
     {&GPIO.out_w1tc,&GPIO.out_w1tc}  //clear / clear
   } ;
 #else
+  //gpio_ll_output_disable: hw->enable_w1tc = (0x1 << gpio_num);
+  //GPIO_PIN_MUX_REG[0]: IO_MUX_GPIO0_REG
+  //PIN_INPUT_ENABLE(PIN_NAME): SET_PERI_REG_MASK(PIN_NAME,FUN_IE)
   #define SET_I(dp, dm) { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[dp]); PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[dm]);  gpio_ll_output_disable(&GPIO,dm); gpio_ll_output_disable(&GPIO,dp);}
-  //#define SET_O(dp, dm) { GPIO.enable_w1ts.val = (1 << (dp)) | (1 << (dm));  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dp]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dm]);  }
-  //#define READ_BOTH_PINS (((GPIO.in.val&RD_MASK)<<8)>>RD_SHIFT)
+  #define SET_O(dp, dm) { GPIO.enable_w1ts.val = (1 << (dp)) | (1 << (dm));  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dp]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[dm]);  }
+  #define READ_BOTH_PINS (((GPIO.in.val&RD_MASK)<<8)>>RD_SHIFT)
   uint32_t * snd[4][2]  =
   {
     {&GPIO.out_w1tc.val,&GPIO.out_w1ts.val},
@@ -783,6 +786,8 @@ START:
   }
   //__enable_irq();
   received_NRZI_buffer_bytesCnt = STORE-received_NRZI_buffer;
+/*  if(received_NRZI_buffer_bytesCnt > 1)
+    printf("received %d\n", received_NRZI_buffer_bytesCnt); */
 }
 
 
