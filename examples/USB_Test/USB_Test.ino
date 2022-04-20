@@ -87,6 +87,17 @@ static void my_USB_PrintCB(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, ui
   printf("\n");
 }
 
+unsigned activity_count = 0;
+void my_LedBlinkCB(int on_off)
+{
+  digitalWrite(BLINK_GPIO, on_off);
+  if(on_off)
+  {
+    //  initStates(-1,-1,-1,-1,-1,-1,-1,-1); //disable all to stop processing
+    ++activity_count;
+  }
+}
+
 usb_pins_config_t USB_Pins_Config =
 {
   DP_P0, DM_P0,
@@ -96,20 +107,30 @@ usb_pins_config_t USB_Pins_Config =
 };
 
 
+
 void setup()
 {
-
   Serial.begin(115200);
   delay(200);
   Serial.printf("USB Soft Host Test for %s\n", PROFILE_NAME );
   delay(1000);
 
   USH.init( USB_Pins_Config, my_USB_DetectCB, my_USB_PrintCB );
-
+  USH.setActivityBlinker(my_LedBlinkCB);
 }
+
+extern volatile uint8_t received_NRZI_buffer_bytesCnt;
+extern uint16_t received_NRZI_buffer[];
 
 void loop()
 {
+  static unsigned prev_count = 0;
+  if(activity_count != prev_count && received_NRZI_buffer_bytesCnt > 0)
+  {
+    prev_count = activity_count;
+    printf("activity %d, received %d bits\n", activity_count, received_NRZI_buffer_bytesCnt);
+  }
+
 #ifdef TIMER_INTERVAL0_SEC
   yield();
 

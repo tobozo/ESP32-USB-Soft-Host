@@ -2,15 +2,7 @@
 #define __USB_SOFT_HOST_HPP_
 
 #ifndef BLINK_GPIO
-#ifdef ESP32
-  #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
-    #define BLINK_GPIO 18
-  #else
-    #define BLINK_GPIO 22
-  #endif
-#else
 #define BLINK_GPIO LED_BUILTIN
-#endif
 #endif
 
 // include the modified version from Dmitry Samsonov
@@ -158,9 +150,10 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
     (hal_gpio_num_t)pconf.dp2, (hal_gpio_num_t)pconf.dm2,
     (hal_gpio_num_t)pconf.dp3, (hal_gpio_num_t)pconf.dm3
   );
-
+#ifdef BLINK_GPIO
   hal_gpio_pad_select_gpio((hal_gpio_num_t)BLINK_GPIO);
-  //hal_gpio_set_direction((hal_gpio_num_t)BLINK_GPIO, GPIO_MODE_OUTPUT);
+  hal_gpio_set_direction((hal_gpio_num_t)BLINK_GPIO, GPIO_MODE_OUTPUT);
+#endif
 #ifdef TIMER_INTERVAL0_SEC
   #if !defined USE_NATIVE_GROUP_TIMERS && defined(ESP32)
   timer_queue = xQueueCreate( 10, sizeof(timer_event_t) );

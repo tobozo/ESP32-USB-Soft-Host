@@ -415,6 +415,7 @@ typedef struct
 } sUsbContStruct;
 
 sUsbContStruct * current;
+void usb_disable_current() { current->isValid = 0; }
 
 void parseImmed(sUsbContStruct * pcurrent)
 {
@@ -786,8 +787,6 @@ START:
   }
   //__enable_irq();
   received_NRZI_buffer_bytesCnt = STORE-received_NRZI_buffer;
-/*  if(received_NRZI_buffer_bytesCnt > 1)
-    printf("received %d\n", received_NRZI_buffer_bytesCnt); */
 }
 
 
@@ -917,7 +916,7 @@ void timerCallBack()
       SOF();
     #else
       SET_O(DP_PIN, DM_PIN);
-      SE_J;
+      SE_J; //this seems to prepare output pins value for the next use
       SET_I(DP_PIN, DM_PIN);
       current->cmdTimeOut  =    2;
       current->cb_Cmd  = CB_WAIT1;
