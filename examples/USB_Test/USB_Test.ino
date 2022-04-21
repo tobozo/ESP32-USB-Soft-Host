@@ -53,9 +53,10 @@
   #define DM_P3  -1
 #endif
 
+#ifdef DEBUG_ALL
 extern volatile uint8_t received_NRZI_buffer_bytesCnt;
 extern uint16_t const received_NRZI_buffer[];
-
+#endif
 
 static void my_USB_DetectCB( uint8_t usbNum, void * dev )
 {
@@ -93,12 +94,14 @@ unsigned activity_count = 0;
 void my_LedBlinkCB(int on_off)
 {
   digitalWrite(BLINK_GPIO, on_off);
+#ifdef DEBUG_ALL
   if(on_off)
   {
     if(received_NRZI_buffer_bytesCnt <= 13) //this is for debugging no-data packets
       initStates(-1,-1,-1,-1,-1,-1,-1,-1); //disable all to stop processing
     ++activity_count;
   }
+#endif
 }
 
 usb_pins_config_t USB_Pins_Config =
@@ -124,6 +127,7 @@ void setup()
 
 void loop()
 {
+#ifdef DEBUG_ALL
   static unsigned prev_count = 0;
   if(activity_count != prev_count && received_NRZI_buffer_bytesCnt > 0)
   {
@@ -141,6 +145,7 @@ void loop()
       printf("0x%02d %d\n", pins, bit_deltat); 
     }
   }
+#endif
 
 #ifdef TIMER_INTERVAL0_SEC
   yield();

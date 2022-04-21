@@ -1561,7 +1561,9 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
       }
     } else {
       if( current->DP == -1 && current->DM == -1 ) {
-        //printf("USB#%d is disabled by user configuration\n", k); //maybe called in interrupt handler for disabling the port
+#ifndef DEBUG_ALL
+        printf("USB#%d is disabled by user configuration\n", k); //maybe called in interrupt handler for disabling the port
+#endif
       } else {
         printf("USB#%d (pins %d %d) has errors and will be disabled !\n", k, (int)current->DP, (int)current->DM );
       }
