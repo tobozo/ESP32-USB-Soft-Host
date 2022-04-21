@@ -53,6 +53,8 @@
   #define DM_P3  -1
 #endif
 
+extern volatile uint8_t received_NRZI_buffer_bytesCnt;
+extern uint16_t const received_NRZI_buffer[];
 
 
 static void my_USB_DetectCB( uint8_t usbNum, void * dev )
@@ -93,7 +95,8 @@ void my_LedBlinkCB(int on_off)
   digitalWrite(BLINK_GPIO, on_off);
   if(on_off)
   {
-    //  initStates(-1,-1,-1,-1,-1,-1,-1,-1); //disable all to stop processing
+    if(received_NRZI_buffer_bytesCnt <= 13) //this is for debugging no-data packets
+      initStates(-1,-1,-1,-1,-1,-1,-1,-1); //disable all to stop processing
     ++activity_count;
   }
 }
@@ -119,16 +122,24 @@ void setup()
   USH.setActivityBlinker(my_LedBlinkCB);
 }
 
-extern volatile uint8_t received_NRZI_buffer_bytesCnt;
-extern uint16_t received_NRZI_buffer[];
-
 void loop()
 {
   static unsigned prev_count = 0;
   if(activity_count != prev_count && received_NRZI_buffer_bytesCnt > 0)
   {
     prev_count = activity_count;
-    printf("activity %d, received %d bits\n", activity_count, received_NRZI_buffer_bytesCnt);
+    int xcount = received_NRZI_buffer_bytesCnt;
+    uint16_t buf[256];
+    memcpy(buf, received_NRZI_buffer, xcount*sizeof(*buf));
+    printf("activity %d, received %d transitions\n", activity_count, xcount);
+    uint8_t prev_time = buf[0] & 0xFF;
+    for(int i=0; i < xcount; ++i)
+    {
+      uint8_t pins = buf[i]>>8;
+      uint8_t bit_deltat = (buf[i] & 0xFF) - prev_time;
+      prev_time = (buf[i] & 0xFF);
+      printf("0x%02d %d\n", pins, bit_deltat); 
+    }
   }
 
 #ifdef TIMER_INTERVAL0_SEC

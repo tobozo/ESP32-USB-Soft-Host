@@ -139,7 +139,22 @@ static uint32_t _getCycleCount32()
 static uint8_t _getCycleCount8d8(void)
 {
   uint32_t ccount = _getCycleCount32();
+  //aproximate scale depending on CPU clock frequency
+#if   F_CPU <   50*1000000
+  return ccount;
+#elif F_CPU <  100*1000000
+  return ccount>>1;
+#elif F_CPU <  200*1000000
+  return ccount>>2;
+#elif F_CPU <  400*1000000
   return ccount>>3;
+#elif F_CPU <  800*1000000
+  return ccount>>4;
+#elif F_CPU < 1600*1000000
+  return ccount>>5;
+#else
+  return ccount>>6;
+#endif
 }
 
 
@@ -763,12 +778,14 @@ void sendOnly()
   SET_I(DP_PIN, DM_PIN);
 }
 
+void (*onLedBlinkCB)(int on_off) = NULL;
+
 
 void sendRecieveNParse()
 {
   register uint32_t R3;
   register uint16_t *STORE = received_NRZI_buffer;
-  //__disable_irq();
+  hal_disable_irq();
   sendOnly();
   register uint32_t R4;// = READ_BOTH_PINS;
 
@@ -785,8 +802,11 @@ START:
       if(R4!=R3)  goto START;
     }
   }
-  //__enable_irq();
+  hal_enable_irq();
   received_NRZI_buffer_bytesCnt = STORE-received_NRZI_buffer;
+
+  //early activation for debuggin no-data packets
+  //if(received_NRZI_buffer_bytesCnt > 1) if(onLedBlinkCB) onLedBlinkCB(1);
 }
 
 
@@ -1207,8 +1227,6 @@ void set_ondetect_cb( ondetectcb_t cb )
 }
 
 
-void (*onLedBlinkCB)(int on_off) = NULL;
-
 void set_onled_blink_cb( onledblinkcb_t cb )
 {
   onLedBlinkCB = cb;
@@ -1532,7 +1550,7 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
       }
     } else {
       if( current->DP == -1 && current->DM == -1 ) {
-        printf("USB#%d is disabled by user configuration\n", k);
+        //printf("USB#%d is disabled by user configuration\n", k); //maybe called in interrupt handler for disabling the port
       } else {
         printf("USB#%d (pins %d %d) has errors and will be disabled !\n", k, (int)current->DP, (int)current->DM );
       }

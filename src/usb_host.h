@@ -40,6 +40,8 @@
 #define      hal_gpio_set_level(pin, level) gpio_set_level(pin, level)
 #define      hal_gpio_pulldown_en(pin) gpio_pulldown_en(pin)
 #define      hal_gpio_read(pin) ((GPIO.in>>pin)&1)
+#define      hal_enable_irq() //seems not required since the dual processor
+#define      hal_disable_irq()
 
 
 //#ifdef TIMER_INTERVAL0_SEC
@@ -73,6 +75,8 @@ typedef xQueueHandle hal_queue_handle_t;
 #define      hal_gpio_set_level(pin, level) digitalWrite(pin, level ? HIGH : LOW)
 #define      hal_gpio_pulldown_en(pin)
 #define      hal_gpio_read(pin) digitalRead(pin)
+#define      hal_enable_irq() interrupts()
+#define      hal_disable_irq() noInterrupts()
 typedef int timer_idx_t;
 #define log_d(m) printf(m)
 #define log_e(m) printf(m)
