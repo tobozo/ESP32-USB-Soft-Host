@@ -131,6 +131,23 @@ int TM_OUT              = 64;    //receive time out no activity on bus
 #endif
 
 
+//aproximate scale depending on CPU clock frequency
+#if   F_CPU <   50*1000000
+#define TIME_FACTOR_BITS 0
+#elif F_CPU <  100*1000000
+#define TIME_FACTOR_BITS 1
+#elif F_CPU <  200*1000000
+#define TIME_FACTOR_BITS 2
+#elif F_CPU <  400*1000000
+#define TIME_FACTOR_BITS 3
+#elif F_CPU <  800*1000000
+#define TIME_FACTOR_BITS 4
+#elif F_CPU < 1600*1000000
+#define TIME_FACTOR_BITS 5
+#else
+#define TIME_FACTOR_BITS 6
+#endif
+
 static uint32_t _getCycleCount32()
 {
   uint32_t ccount = cpu_hal_get_cycle_count();
@@ -139,22 +156,7 @@ static uint32_t _getCycleCount32()
 static uint8_t _getCycleCount8d8(void)
 {
   uint32_t ccount = _getCycleCount32();
-  //aproximate scale depending on CPU clock frequency
-#if   F_CPU <   50*1000000
-  return ccount;
-#elif F_CPU <  100*1000000
-  return ccount>>1;
-#elif F_CPU <  200*1000000
-  return ccount>>2;
-#elif F_CPU <  400*1000000
-  return ccount>>3;
-#elif F_CPU <  800*1000000
-  return ccount>>4;
-#elif F_CPU < 1600*1000000
-  return ccount>>5;
-#else
-  return ccount>>6;
-#endif
+  return ccount>>TIME_FACTOR_BITS;
 }
 
 
@@ -657,6 +659,9 @@ uint16_t debug_buff[0x100];
 #endif
 
 
+void (*onLedBlinkCB)(int on_off) = NULL;
+#define NOTIFY() if(onLedBlinkCB) onLedBlinkCB(1)
+
 
 int parse_received_NRZI_buffer()
 {
@@ -724,6 +729,7 @@ int parse_received_NRZI_buffer()
           #ifdef DEBUG_ALL
             debug_buff[rcnt++] = current_res;
           #endif
+    //NOTIFY();
           decoded_receive_buffer_put(current_res);
           if(start>8) {
             for(int bt =0;bt<8;bt++) {
@@ -778,14 +784,11 @@ void sendOnly()
   SET_I(DP_PIN, DM_PIN);
 }
 
-void (*onLedBlinkCB)(int on_off) = NULL;
-
-
 void sendRecieveNParse()
 {
   register uint32_t R3;
   register uint16_t *STORE = received_NRZI_buffer;
-  hal_disable_irq();
+  //hal_disable_irq(); //this is already in IRQ handler
   sendOnly();
   register uint32_t R4;// = READ_BOTH_PINS;
 
@@ -802,11 +805,11 @@ START:
       if(R4!=R3)  goto START;
     }
   }
-  hal_enable_irq();
+  //hal_enable_irq();
   received_NRZI_buffer_bytesCnt = STORE-received_NRZI_buffer;
 
-  //early activation for debuggin no-data packets
-  //if(received_NRZI_buffer_bytesCnt > 1) if(onLedBlinkCB) onLedBlinkCB(1);
+  //early activation for debugging
+  //if(received_NRZI_buffer_bytesCnt > 13) NOTIFY();
 }
 
 
@@ -895,6 +898,7 @@ void timerCallBack()
     SET_I(DP_PIN, DM_PIN);
     current->wires_last_state = READ_BOTH_PINS>>8;
     if(current->wires_last_state==M_ONE) {
+      //NOTIFY(); //passes here
       // low speed
     } else if(current->wires_last_state==P_ONE) {
       //high speed
@@ -1244,7 +1248,10 @@ void fsm_Mashine()
     current->fsm_state   = 1;
   }
   if(current->fsm_state == 1) {
+    //NOTIFY(); //passes here
     if(current->wires_last_state==M_ONE) { // if(1)
+        //NOTIFY(); //passes here
+
       current->cmdTimeOut = 100+current->selfNum*73;
       current->cb_Cmd      = CB_WAIT0;
       current->fsm_state   = 2;
@@ -1253,9 +1260,11 @@ void fsm_Mashine()
       current->cb_Cmd      = CB_CHECK;
     }
   } else if(current->fsm_state==2) {
+    //NOTIFY(); //passes here
     current->cb_Cmd       = CB_RESET;
     current->fsm_state    = 3;
   } else if(current->fsm_state==3) {
+    //NOTIFY(); //passes here
     current->cb_Cmd       = CB_POWER;
     #ifdef TEST
       current->fsm_state    =  3;
@@ -1266,10 +1275,12 @@ void fsm_Mashine()
     Request(T_SETUP,ZERO_USB_ADDRESS,0b0000,T_DATA0,0x80,0x6,0x0100,0x0000,0x0012,0x0012);
     current->fsm_state    = 5;
   } else if(current->fsm_state==5) {
+    //NOTIFY(); //passes here
     if(current->acc_decoded_resp_counter==0x12) {
       memcpy(&current->desc,current->acc_decoded_resp,0x12);
       current->ufPrintDesc |= 1;
     } else {
+    //NOTIFY(); //passes here
       if(current->numb_reps_errors_allowed<=0) {
         current->fsm_state    =  0;
         return;
@@ -1519,8 +1530,8 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         int  dTime = 0;
         printf("cpu freq = %d MHz\n", freq_mhz);
         TM_OUT = freq_mhz/2;
-        // 8  - func divided clock to 8, 1.5 - MHz USB LS
-        TIME_MULT = (int)(TIME_SCALE/(freq_mhz/8/1.5)+0.5);
+        // 8  - func divided clock to 8, 1.5 - MHz USB LS //NOTE: N=8 noy anymore constant, depends on clock frequency
+        TIME_MULT = (int)(TIME_SCALE/(freq_mhz/(1<<TIME_FACTOR_BITS)/1.5)+0.5); //this fixes the timing bug!!
         printf("TIME_MULT = %d \n",TIME_MULT);
 
         int     TRANSMIT_TIME_DELAY_OPT = 0;
