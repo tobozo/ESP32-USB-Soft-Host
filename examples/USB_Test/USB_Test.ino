@@ -33,11 +33,13 @@
   #define PROFILE_NAME "Default Wroom"
   #define DP_P0  12  // always enabled
   #define DM_P0  14  // always enabled
-#else
-  // Teensy
-  #define PROFILE_NAME "Teensy"
+#elif defined(__IMXRT1062__)
+  // Teensy 4.x
+  #define PROFILE_NAME "Teensy 4.x"
   #define DP_P0  22
   #define DM_P0  23
+#else
+#error PLATFORM NOT SUPPORTED
 #endif
 
 #ifndef DP_P1
@@ -176,7 +178,7 @@ void loop()
 #endif
 }
 
-#if defined(TIMER_INTERVAL0_SEC) && !defined(ESP32)
+#if defined(TIMER_INTERVAL0_SEC) && defined(__IMXRT1062__)
 void hal_timer_setup(timer_idx_t timer_num, uint32_t alarm_value, timer_isr_t timer_isr)
 {
   static IntervalTimer tim;

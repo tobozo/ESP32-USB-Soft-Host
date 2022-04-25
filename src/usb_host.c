@@ -49,7 +49,11 @@ void hal_timer_setup(timer_idx_t timer_num, uint32_t alarm_value, timer_isr_t ti
 
 #define cpu_hal_get_cycle_count xthal_get_ccount
 #else
+#ifdef __IMXRT1062__
 #include <Arduino.h>
+#else
+#include <generated/csr.h>
+#endif
 #endif //ESP32
 
 #ifdef USE_TUSB_FIFO
@@ -148,7 +152,7 @@ int TM_OUT              = 64;    //receive time out no activity on bus
 #define TIME_FACTOR_BITS 6
 #endif
 
-static uint32_t _getCycleCount32()
+static uint32_t _getCycleCount32(void)
 {
   uint32_t ccount = cpu_hal_get_cycle_count();
   return  ccount;
@@ -193,8 +197,9 @@ static uint8_t _getCycleCount8d8(void)
 
 #endif
 #endif
-
+#if defined(__IMXRT1062__) || defined(ESP32)
 #warning assumes DM_PIN > DP_PIN
+#endif
 #ifndef READ_BOTH_PINS
 #define READ_BOTH_PINS ((hal_gpio_read(DM_PIN) ? 1<<(8+DM_PIN - DP_PIN) : 0) | (hal_gpio_read(DP_PIN) ? 0x100 : 0))
 #endif
@@ -432,7 +437,7 @@ typedef struct
 } sUsbContStruct;
 
 sUsbContStruct * current;
-void usb_disable_current() { current->isValid = 0; }
+void usb_disable_current(void) { current->isValid = 0; }
 
 void parseImmed(sUsbContStruct * pcurrent)
 {
@@ -482,14 +487,14 @@ uint32_t sndA[4]  = {0,0,0,0};
 
 
 
-void restart()
+void restart(void)
 {
   transmit_NRZI_buffer_cnt = 0;
 }
 
 
 
-void decoded_receive_buffer_clear()
+void decoded_receive_buffer_clear(void)
 {
   decoded_receive_buffer_tail = decoded_receive_buffer_head;
 }
@@ -504,21 +509,21 @@ void decoded_receive_buffer_put(uint8_t val)
 
 
 
-uint8_t decoded_receive_buffer_get()
+uint8_t decoded_receive_buffer_get(void)
 {
   return decoded_receive_buffer[decoded_receive_buffer_tail++];
 }
 
 
 
-uint8_t decoded_receive_buffer_size()
+uint8_t decoded_receive_buffer_size(void)
 {
   return (uint8_t )(decoded_receive_buffer_head-decoded_receive_buffer_tail);
 }
 
 
 
-uint8_t cal5()
+uint8_t cal5(void)
 {
   uint8_t   crcb;
   uint8_t   rem;
@@ -539,7 +544,7 @@ uint8_t cal5()
 
 
 
-uint32_t cal16()
+uint32_t cal16(void)
 {
   uint32_t   crcb;
   uint32_t   rem;
@@ -585,7 +590,7 @@ void pu_LSB(uint16_t msg,int N)
 
 
 
-void repack()
+void repack(void)
 {
   int last = USB_LS_J;
   int cntOnes = 0;
@@ -663,7 +668,7 @@ void (*onLedBlinkCB)(int on_off) = NULL;
 #define NOTIFY() if(onLedBlinkCB) onLedBlinkCB(1)
 
 
-int parse_received_NRZI_buffer()
+int parse_received_NRZI_buffer(void)
 {
 
   if(!received_NRZI_buffer_bytesCnt) return 0;
@@ -764,7 +769,7 @@ int parse_received_NRZI_buffer()
 
 
 //#define WR_SIMULTA
-void sendOnly()
+void sendOnly(void)
 {
   uint8_t k;
   SET_O(DP_PIN, DM_PIN);
@@ -784,7 +789,7 @@ void sendOnly()
   SET_I(DP_PIN, DM_PIN);
 }
 
-void sendRecieveNParse()
+void sendRecieveNParse(void)
 {
   register uint32_t R3;
   register uint16_t *STORE = received_NRZI_buffer;
@@ -814,7 +819,7 @@ START:
 
 
 
-int sendRecieve()
+int sendRecieve(void)
 {
   sendRecieveNParse();
   return parse_received_NRZI_buffer();
@@ -822,7 +827,7 @@ int sendRecieve()
 
 
 
-void SOF()
+void SOF(void)
 {
   if(1) {
     repack();
@@ -873,7 +878,7 @@ uint8_t ACK_BUFF[0x20];
 int ACK_BUFF_CNT = 0;
 
 
-void ACK()
+void ACK(void)
 {
   transmit_NRZI_buffer_cnt =0;
   if(ACK_BUFF_CNT==0) {
@@ -890,7 +895,7 @@ void ACK()
 }
 
 
-void timerCallBack()
+void timerCallBack(void)
 {
   decoded_receive_buffer_clear();
 
@@ -1237,7 +1242,7 @@ void set_onled_blink_cb( onledblinkcb_t cb )
 }
 
 
-void fsm_Mashine()
+void fsm_Mashine(void)
 {
   if(!current->bComplete) return;
   current->bComplete = 0;
@@ -1418,7 +1423,7 @@ int checkPins(int dp,int dm)
 }
 
 
-int64_t get_system_time_us()
+int64_t get_system_time_us(void)
 {
   return micros(); 
 }
@@ -1447,7 +1452,7 @@ float testDelay6(float freq_MHz)
   uint32_t stim =  get_system_time_us()- stimb;
   freq_MHz = 1.0f;
   res = stim*6.0/freq_MHz/(SEND_BITS*REPS);
-  printf("%d bits in %f uSec %f MHz  6 ticks in %f uS\n",(SEND_BITS*REPS),stim/(float)freq_MHz,(SEND_BITS*REPS)*freq_MHz/stim,stim*6.0/freq_MHz/(SEND_BITS*REPS));
+  printf("%d bits in %f uSec %f MHz  6 ticks in %f uS\n",(SEND_BITS*REPS),(double)stim/(double)freq_MHz,(SEND_BITS*REPS)*(double)freq_MHz/(double)stim,(double)stim*(double)6.0/(double)freq_MHz/(double)(SEND_BITS*REPS));
 
   return res;
 }
@@ -1557,10 +1562,10 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         }
         TRANSMIT_TIME_DELAY = TRANSMIT_TIME_DELAY_OPT+DELAY_CORR;
         setDelay(TRANSMIT_TIME_DELAY);
-        printf("TRANSMIT_TIME_DELAY = %d time = %f error = %f%% \n",TRANSMIT_TIME_DELAY,cS_opt,(cS_opt-OPT_TIME)/OPT_TIME*100);
+        printf("TRANSMIT_TIME_DELAY = %d time = %f error = %f%% \n",TRANSMIT_TIME_DELAY,(double)cS_opt,(double)(cS_opt-OPT_TIME)/(double)OPT_TIME*(double)100);
       }
     } else {
-      if( current->DP == -1 && current->DM == -1 ) {
+      if( (int)current->DP == -1 && (int)current->DM == -1 ) {
 #ifndef DEBUG_ALL
         printf("USB#%d is disabled by user configuration\n", k); //maybe called in interrupt handler for disabling the port
 #endif
@@ -1594,9 +1599,11 @@ uint8_t usbGetFlags(int _usb_num)
 
 void usb_process()
 {
+#ifdef ESP32
   #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
     cpu_ll_enable_cycle_count();
   #endif
+#endif
   for(int k=0;k<NUM_USB;k++) {
     current = &current_usb[k];
     if(current->isValid) {
@@ -1609,7 +1616,7 @@ void usb_process()
 
 
 
-void printState()
+void printState(void)
 {
   static int cntl = 0;
   cntl++;

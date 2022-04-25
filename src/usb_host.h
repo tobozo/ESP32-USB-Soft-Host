@@ -12,7 +12,7 @@
 #define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
 #define USE_TUSB_FIFO
 #ifdef USE_TUSB_FIFO
-#include <tusb_fifo.h> //use TinyUSB queues
+#include <common/tusb_fifo.h> //use TinyUSB queues
 #endif
 
 #ifdef ESP32
@@ -67,16 +67,41 @@ typedef xQueueHandle hal_queue_handle_t;
 #include <math.h>
 #undef IRAM_ATTR
 #define IRAM_ATTR
+#define      hal_gpio_pad_select_gpio(pin)
 
+#ifdef __IMXRT1062__
 #define GPIO_MODE_OUTPUT OUTPUT
 #define GPIO_MODE_INPUT INPUT
-#define      hal_gpio_pad_select_gpio(pin)
 #define      hal_gpio_set_direction(pin, output) pinMode(pin, output ? OUTPUT : INPUT_PULLDOWN)
 #define      hal_gpio_set_level(pin, level) digital_pin_to_info_PGM[pin].reg[level?0x21:0x22] = digital_pin_to_info_PGM[pin].mask //digitalWrite(pin, level ? HIGH : LOW)
 #define      hal_gpio_read(pin) (digital_pin_to_info_PGM[pin].reg[2] & digital_pin_to_info_PGM[pin].mask ? 1 : 0)//digitalRead(pin)
 #define      hal_gpio_pulldown_en(pin)
 #define      hal_enable_irq() interrupts()
 #define      hal_disable_irq() noInterrupts()
+#define cpu_hal_get_cycle_count() ARM_DWT_CYCCNT
+#define hal_delay(x) delay(x)
+#define hal_get_cpu_mhz() (F_CPU/1000000)
+
+#else //not __IMXRT1062__
+
+#include <litesdk_gpio.h>
+#include <litesdk_timer.h>
+#include <generated/soc.h>
+#define GPIO_MODE_OUTPUT true
+#define GPIO_MODE_INPUT false
+#define USBHOST_GPIO litegpio0
+#define hal_gpio_set_direction(pin, output) if(output) litegpio_mode_output(USBHOST_GPIO, pin); else litegpio_mode_output(USBHOST_GPIO, pin)
+#define hal_gpio_set_level(pin, level) litegpio_write(USBHOST_GPIO, pin, level)
+#define hal_gpio_read(pin) litegpio_read(USBHOST_GPIO, pin)
+#define hal_gpio_pulldown_en(pin)
+
+#define cpu_hal_get_cycle_count() litetimer_get_value_cycles(litetimer0)
+#define F_CPU LITETIMER_BASE_FREQUENCY
+#define hal_delay(x) {long t1=cpu_hal_get_cycle_count()+x*(F_CPU/1000); while(long(cpu_hal_get_cycle_count() - t1) < 0); }
+#define hal_get_cpu_mhz() (F_CPU/1000000)
+#define micros() litetimer_get_value_us(litetimer0)
+#endif
+
 typedef int timer_idx_t;
 #define log_d(m) printf(m)
 #define log_e(m) printf(m)
@@ -92,11 +117,7 @@ typedef int timer_idx_t;
 #define usbhost_timer_cb usb_process
 #endif
 
-#define hal_delay(x) delay(x)
 #define fabsf(x) (float)fabs(x)
-#define hal_get_cpu_mhz() (F_CPU/1000000)
-#define cpu_hal_get_cycle_count() ARM_DWT_CYCCNT
-#endif //ESP32
 
 #ifndef hal_gpio_set_level
 #define      hal_gpio_set_level(pin, level) digitalWrite(pin, level ? HIGH : LOW)
@@ -104,6 +125,8 @@ typedef int timer_idx_t;
 #ifndef hal_gpio_read
 #define      hal_gpio_read(pin) digitalRead(pin)
 #endif
+
+#endif //ESP32
 
 #ifdef USE_TUSB_FIFO
 typedef tu_fifo_t hal_queue_handle_t;
@@ -117,7 +140,7 @@ hal_queue_handle_t hal_queue_create(size_t n, size_t sz, void *buffer);
 #ifdef TIMER_CB_HAS_PARAM
 typedef void (*timer_isr_t)(void *para);
 #else
-typedef void (*timer_isr_t)();
+typedef void (*timer_isr_t)(void);
 #endif
 void hal_timer_setup(timer_idx_t timer_num, uint32_t alarm_value, timer_isr_t timer_isr);
 #endif
@@ -127,8 +150,8 @@ void hal_timer_setup(timer_idx_t timer_num, uint32_t alarm_value, timer_isr_t ti
 // any number less 127, but no zero
 #define  ASSIGNED_USB_ADDRESS    3
 
-void IRAM_ATTR printState();
-void IRAM_ATTR usb_process();
+void IRAM_ATTR printState(void);
+void IRAM_ATTR usb_process(void);
 typedef void (*onusbmesscb_t)(uint8_t src,uint8_t len,uint8_t *data);
 void set_usb_mess_cb( onusbmesscb_t onUSBMessCb );
 typedef void (*printcb_t)(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len);
