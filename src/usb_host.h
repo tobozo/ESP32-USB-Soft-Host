@@ -72,9 +72,9 @@ typedef xQueueHandle hal_queue_handle_t;
 #define GPIO_MODE_INPUT INPUT
 #define      hal_gpio_pad_select_gpio(pin)
 #define      hal_gpio_set_direction(pin, output) pinMode(pin, output ? OUTPUT : INPUT_PULLDOWN)
-#define      hal_gpio_set_level(pin, level) digitalWrite(pin, level ? HIGH : LOW)
+#define      hal_gpio_set_level(pin, level) digital_pin_to_info_PGM[pin].reg[level?0x21:0x22] = digital_pin_to_info_PGM[pin].mask //digitalWrite(pin, level ? HIGH : LOW)
+#define      hal_gpio_read(pin) (digital_pin_to_info_PGM[pin].reg[2] & digital_pin_to_info_PGM[pin].mask ? 1 : 0)//digitalRead(pin)
 #define      hal_gpio_pulldown_en(pin)
-#define      hal_gpio_read(pin) digitalRead(pin)
 #define      hal_enable_irq() interrupts()
 #define      hal_disable_irq() noInterrupts()
 typedef int timer_idx_t;
@@ -97,6 +97,13 @@ typedef int timer_idx_t;
 #define hal_get_cpu_mhz() (F_CPU/1000000)
 #define cpu_hal_get_cycle_count() ARM_DWT_CYCCNT
 #endif //ESP32
+
+#ifndef hal_gpio_set_level
+#define      hal_gpio_set_level(pin, level) digitalWrite(pin, level ? HIGH : LOW)
+#endif
+#ifndef hal_gpio_read
+#define      hal_gpio_read(pin) digitalRead(pin)
+#endif
 
 #ifdef USE_TUSB_FIFO
 typedef tu_fifo_t hal_queue_handle_t;
