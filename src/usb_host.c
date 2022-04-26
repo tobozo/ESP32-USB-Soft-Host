@@ -1597,7 +1597,7 @@ uint8_t usbGetFlags(int _usb_num)
 
 
 
-void usb_process()
+void usb_process(void)
 {
 #ifdef ESP32
   #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3

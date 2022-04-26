@@ -84,8 +84,8 @@ typedef xQueueHandle hal_queue_handle_t;
 
 #else //not __IMXRT1062__
 
-#include <litesdk_gpio.h>
-#include <litesdk_timer.h>
+#include <liblitesdk/litesdk_gpio.h>
+#include <liblitesdk/litesdk_timer.h>
 #include <generated/soc.h>
 #define GPIO_MODE_OUTPUT true
 #define GPIO_MODE_INPUT false
