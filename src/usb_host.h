@@ -9,7 +9,10 @@
 #endif
 #endif
 
+#if defined(ESP32) || defined(__IMXRT1062__)
 #define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
+#endif
+
 #define USE_TUSB_FIFO
 #ifdef USE_TUSB_FIFO
 #include <common/tusb_fifo.h> //use TinyUSB queues
@@ -90,16 +93,28 @@ typedef xQueueHandle hal_queue_handle_t;
 #define GPIO_MODE_OUTPUT true
 #define GPIO_MODE_INPUT false
 #define USBHOST_GPIO litegpio0
-#define hal_gpio_set_direction(pin, output) if(output) litegpio_mode_output(USBHOST_GPIO, pin); else litegpio_mode_output(USBHOST_GPIO, pin)
+#define hal_gpio_set_direction(pin, output) if(output) litegpio_mode_output(USBHOST_GPIO, pin); else litegpio_mode_input(USBHOST_GPIO, pin)
 #define hal_gpio_set_level(pin, level) litegpio_write(USBHOST_GPIO, pin, level)
 #define hal_gpio_read(pin) litegpio_read(USBHOST_GPIO, pin)
 #define hal_gpio_pulldown_en(pin)
 
-#define cpu_hal_get_cycle_count() litetimer_get_value_cycles(litetimer0)
+#define      hal_enable_irq() irq_setie(1)
+#define      hal_disable_irq() irq_setie(0)
+
+#define hal_set_differential_gpio_value(dp, dm,v) USBHOST_GPIO->OUT = ((v & 1) << dm) | ((v == 0) << dp) //| (1 << BLINK_GPIO)
+
+#define SET_I(dp, dm)  USBHOST_GPIO->OE &= ~((1 << dp) | (1 << dm))
+#define SET_O(dp, dm)  USBHOST_GPIO->OE |= (1 << dp) | (1 << dm)
+#define SE_J USBHOST_GPIO->OUT = 1 << DP_PIN //clear / set
+#define SE_0 USBHOST_GPIO->OUT = 0 //clear / clear
+
+
+inline uint32_t cpu_hal_get_cycle_count() { timer0_uptime_latch_write(1); return csr_read_simple(CSR_TIMER0_UPTIME_CYCLES_ADDR+4); }
+inline uint64_t cpu_hal_get_cycle_count64() { timer0_uptime_latch_write(1); return timer0_uptime_cycles_read(); }
 #define F_CPU LITETIMER_BASE_FREQUENCY
-#define hal_delay(x) {long t1=cpu_hal_get_cycle_count()+x*(F_CPU/1000); while(long(cpu_hal_get_cycle_count() - t1) < 0); }
+#define hal_delay(x) {long t1=cpu_hal_get_cycle_count64()+x*(F_CPU/1000); while(long(cpu_hal_get_cycle_count() - t1) < 0); }
 #define hal_get_cpu_mhz() (F_CPU/1000000)
-#define micros() litetimer_get_value_us(litetimer0)
+#define micros() ((1000000ull*cpu_hal_get_cycle_count64())/F_CPU)
 #endif
 
 typedef int timer_idx_t;

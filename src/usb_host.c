@@ -216,10 +216,12 @@ static uint8_t _getCycleCount8d8(void)
 #define SE_0 { hal_gpio_set_level(DM_PIN, 0); hal_gpio_set_level(DP_PIN, 0); } //clear / clear
 #endif
 
+
+#ifndef hal_set_differential_gpio_value
 #define hal_set_differential_gpio_value(dp, dm,v) \
 { hal_gpio_set_level(dm, v & 1); /*v==0 => clear, v==1 => set,   v == 2 => clear*/ \
     hal_gpio_set_level(dp, v == 0); } /*v==0 => set  , v==1 => clear, v == 2 => clear */
-
+#endif
 
 //must be setup ech time with setPins
 uint32_t DP_PIN;
@@ -780,10 +782,14 @@ void sendOnly(void)
     sndA[2] = (out_base )&~(DP | DM);
     sndA[3] = out_base | (DM | DP);
   #endif
-  for(k=0;k<transmit_NRZI_buffer_cnt;k++) {
+  uint32_t t1 = cpu_hal_get_cycle_count();
+  for(k=0;k<transmit_NRZI_buffer_cnt;) {
+    int32_t t = cpu_hal_get_cycle_count() - t1;
+    if(t < 0) continue;
     //usb_transmit_delay(10);
-    cpuDelay(TRANSMIT_TIME_DELAY);
-    hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k]);
+    //cpuDelay(TRANSMIT_TIME_DELAY);
+    hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k++]);
+    t1 += TRANSMIT_TIME_DELAY;
   }
   restart();
   SET_I(DP_PIN, DM_PIN);
@@ -1432,7 +1438,7 @@ int64_t get_system_time_us(void)
 float testDelay6(float freq_MHz)
 {
   // 6 bits must take 4.0 uSec
-  #define SEND_BITS  120
+  #define SEND_BITS 120
   #define REPS 40
   float res = 1;
   transmit_NRZI_buffer_cnt = 0;
@@ -1443,14 +1449,18 @@ float testDelay6(float freq_MHz)
   }
 
 
-  int64_t stimb = get_system_time_us();
+  hal_disable_irq();
+  //uint64_t stimb = cpu_hal_get_cycle_count64();
+  uint32_t stimb = get_system_time_us();
   for(int k=0;k<REPS;k++) {
     sendOnly();
     transmit_NRZI_buffer_cnt = SEND_BITS;
   }
-
+  //uint64_t stim =  cpu_hal_get_cycle_count64()- stimb;
   uint32_t stim =  get_system_time_us()- stimb;
   freq_MHz = 1.0f;
+  hal_enable_irq();
+  
   res = stim*6.0/freq_MHz/(SEND_BITS*REPS);
   printf("%d bits in %f uSec %f MHz  6 ticks in %f uS\n",(SEND_BITS*REPS),(double)stim/(double)freq_MHz,(SEND_BITS*REPS)*(double)freq_MHz/(double)stim,(double)stim*(double)6.0/(double)freq_MHz/(double)(SEND_BITS*REPS));
 
@@ -1531,7 +1541,15 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         //calibrate delay divide 2
         #define DELAY_CORR 2
         int freq_mhz = hal_get_cpu_mhz();
+#ifdef ESP32        
+        int  uTime = 250;
+#else
+#ifdef __IMXRT1062__
         int  uTime = freq_mhz+20;
+#else
+        int  uTime = freq_mhz*8;
+#endif
+#endif
         int  dTime = 0;
         printf("cpu freq = %d MHz\n", freq_mhz);
         TM_OUT = freq_mhz/2;
