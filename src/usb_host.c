@@ -786,15 +786,23 @@ void sendOnly(void)
     sndA[2] = (out_base )&~(DP | DM);
     sndA[3] = out_base | (DM | DP);
   #endif
-  uint32_t t1 = cpu_hal_get_cycle_count();
-  for(k=0;k<transmit_NRZI_buffer_cnt;) {
-    int32_t t = cpu_hal_get_cycle_count() - t1;
-    if(t < 0) continue;
-    //usb_transmit_delay(10);
-    //cpuDelay(TRANSMIT_TIME_DELAY);
-    hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k++]);
-    t1 += TRANSMIT_TIME_DELAY;
+#define TIMING_PREC 4 //add precision
+#ifndef TIMING_PREC
+  for(k=0;k<transmit_NRZI_buffer_cnt;++k) {
+    cpuDelay(TRANSMIT_TIME_DELAY);
+    hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k]);
   }
+#else
+  uint32_t t1 = cpu_hal_get_cycle_count();
+  uint32_t td = 0;
+  for(k=0;;) {
+    int32_t t = cpu_hal_get_cycle_count() - t1;
+    if(t < td/TIMING_PREC) continue;
+    hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k++]);
+    td += TRANSMIT_TIME_DELAY;
+    if(k>=transmit_NRZI_buffer_cnt) break;
+  }
+#endif
   restart();
   SET_I(DP_PIN, DM_PIN);
 }
@@ -1432,12 +1440,13 @@ int checkPins(int dp,int dm)
   return 1;
 }
 
-
+/*
 int64_t get_system_time_us(void)
 {
-  return micros(); 
+  return 1000000ull*cpu_hal_get_cycle_count()/F_CPU;
+  //return micros(); 
 }
-
+*/
 
 float testDelay6(float freq_MHz)
 {
@@ -1454,15 +1463,15 @@ float testDelay6(float freq_MHz)
 
 
   hal_disable_irq();
-  //uint64_t stimb = cpu_hal_get_cycle_count64();
-  uint32_t stimb = get_system_time_us();
+  uint64_t stimb = cpu_hal_get_cycle_count64();
+  //uint32_t stimb = get_system_time_us();
   for(int k=0;k<REPS;k++) {
     sendOnly();
     transmit_NRZI_buffer_cnt = SEND_BITS;
   }
-  //uint64_t stim =  cpu_hal_get_cycle_count64()- stimb;
-  uint32_t stim =  get_system_time_us()- stimb;
-  freq_MHz = 1.0f;
+  uint64_t stim =  cpu_hal_get_cycle_count64()- stimb;
+  //uint32_t stim =  get_system_time_us()- stimb;
+  //freq_MHz = 1.0f;
   hal_enable_irq();
   
   res = stim*6.0/freq_MHz/(SEND_BITS*REPS);
@@ -1474,6 +1483,7 @@ float testDelay6(float freq_MHz)
 uint8_t arr[0x200];
 
 #define F_USB_LOWSPEED 1500000
+#define F_TIMING_BIT_ADDPRECISION 8
 void gpio_test(void) //test with improved timing
 {
     hal_gpio_set_direction(DP_PIN, 1);
@@ -1484,9 +1494,9 @@ void gpio_test(void) //test with improved timing
     for(int i = 0; i <= 6*2;)
     {
       int32_t t = cpu_hal_get_cycle_count() - xt1;
-      if(t < td>>10) continue;
+      if(t < td>>F_TIMING_BIT_ADDPRECISION) continue;
       hal_set_differential_gpio_value(DP_PIN, DM_PIN, b^=1);
-      td += ((F_CPU/1000)*(1<<10))/(F_USB_LOWSPEED/1000);
+      td += ((F_CPU/1000)*(1<<F_TIMING_BIT_ADDPRECISION))/(F_USB_LOWSPEED/1000);
       ++i;
     }
 }
@@ -1545,7 +1555,7 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
 
       // TEST
       setPins(current->DP,current->DM);
-      gpio_test();
+      //gpio_test();
 
       printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
       SET_O(DP_PIN, DM_PIN);
@@ -1568,7 +1578,10 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         int  uTime = 250;
 #else
 #ifdef __IMXRT1062__
-        int  uTime = freq_mhz+20;
+        int  uTime = freq_mhz*2;
+#ifdef TIMING_PREC
+        uTime *= TIMING_PREC;
+#endif
 #else
         int  uTime = freq_mhz*8;
 #endif
@@ -1586,7 +1599,7 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         setDelay(TRANSMIT_TIME_DELAY);
         float  cS_opt = testDelay6(freq_mhz);
         #define OPT_TIME (4.00f)
-        for(int p=0;p<9;p++) {
+        for(int p=0;p<12;p++) {
           TRANSMIT_TIME_DELAY = (uTime+dTime)/2;
           printf("D=%4d ",TRANSMIT_TIME_DELAY);
           setDelay(TRANSMIT_TIME_DELAY);

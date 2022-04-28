@@ -81,7 +81,8 @@ typedef xQueueHandle hal_queue_handle_t;
 #define      hal_gpio_pulldown_en(pin)
 #define      hal_enable_irq() interrupts()
 #define      hal_disable_irq() noInterrupts()
-#define cpu_hal_get_cycle_count() ARM_DWT_CYCCNT
+#define cpu_hal_get_cycle_count() (uint32_t) ARM_DWT_CYCCNT
+#define cpu_hal_get_cycle_count64 cpu_hal_get_cycle_count
 #define hal_delay(x) delay(x)
 #define hal_get_cpu_mhz() (F_CPU/1000000)
 
@@ -102,12 +103,12 @@ typedef xQueueHandle hal_queue_handle_t;
 #define      hal_disable_irq() irq_setie(0)
 
 #define hal_set_differential_gpio_value(dp, dm,v) USBHOST_GPIO->OUT = ((v & 1) << dm) | ((v == 0) << dp) //| (1 << BLINK_GPIO)
-
+/*
 #define SET_I(dp, dm)  USBHOST_GPIO->OE &= ~((1 << dp) | (1 << dm))
 #define SET_O(dp, dm)  USBHOST_GPIO->OE |= (1 << dp) | (1 << dm)
 #define SE_J USBHOST_GPIO->OUT = 1 << DP_PIN //clear / set
 #define SE_0 USBHOST_GPIO->OUT = 0 //clear / clear
-
+*/
 
 inline uint32_t cpu_hal_get_cycle_count() { timer0_uptime_latch_write(1); return csr_read_simple(CSR_TIMER0_UPTIME_CYCLES_ADDR+4); }
 inline uint64_t cpu_hal_get_cycle_count64() { timer0_uptime_latch_write(1); return timer0_uptime_cycles_read(); }
