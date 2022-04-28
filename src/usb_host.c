@@ -135,6 +135,7 @@ int TM_OUT              = 64;    //receive time out no activity on bus
 #endif
 
 
+#if defined(ESP32) || defined(__IMXRT1062__)
 //aproximate scale depending on CPU clock frequency
 #if   F_CPU <   50*1000000
 #define TIME_FACTOR_BITS 0
@@ -150,6 +151,9 @@ int TM_OUT              = 64;    //receive time out no activity on bus
 #define TIME_FACTOR_BITS 5
 #else
 #define TIME_FACTOR_BITS 6
+#endif
+#else
+#define TIME_FACTOR_BITS 1 //vexriscv 100Mhz
 #endif
 
 static uint32_t _getCycleCount32(void)
@@ -1469,6 +1473,23 @@ float testDelay6(float freq_MHz)
 
 uint8_t arr[0x200];
 
+#define F_USB_LOWSPEED 1500000
+void gpio_test(void) //test with improved timing
+{
+    hal_gpio_set_direction(DP_PIN, 1);
+    hal_gpio_set_direction(DM_PIN, 1);
+    uint32_t xt1 = cpu_hal_get_cycle_count();
+    uint8_t b = 0;
+    uint32_t td = 0;
+    for(int i = 0; i <= 6*2;)
+    {
+      int32_t t = cpu_hal_get_cycle_count() - xt1;
+      if(t < td>>10) continue;
+      hal_set_differential_gpio_value(DP_PIN, DM_PIN, b^=1);
+      td += ((F_CPU/1000)*(1<<10))/(F_USB_LOWSPEED/1000);
+      ++i;
+    }
+}
 
 void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
 {
@@ -1524,6 +1545,8 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
 
       // TEST
       setPins(current->DP,current->DM);
+      gpio_test();
+
       printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
       SET_O(DP_PIN, DM_PIN);
       SE_0;
