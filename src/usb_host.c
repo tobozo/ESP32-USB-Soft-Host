@@ -777,7 +777,6 @@ int parse_received_NRZI_buffer(void)
 //#define WR_SIMULTA
 void sendOnly(void)
 {
-  uint8_t k;
   SET_O(DP_PIN, DM_PIN);
   #ifdef WR_SIMULTA
     uint32_t out_base = GPIO.out;
@@ -786,21 +785,20 @@ void sendOnly(void)
     sndA[2] = (out_base )&~(DP | DM);
     sndA[3] = out_base | (DM | DP);
   #endif
-//#define TIMING_PREC 4 //add precision
+#define TIMING_PREC 4 //add precision
 #ifndef TIMING_PREC
+  uint8_t k;
   for(k=0;k<transmit_NRZI_buffer_cnt;++k) {
     cpuDelay(TRANSMIT_TIME_DELAY);
     hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k]);
   }
 #else
-  uint32_t t1 = cpu_hal_get_cycle_count();
-  uint32_t td = 0;
-  for(k=0;;) {
-    int32_t t = cpu_hal_get_cycle_count() - t1;
-    if(t < td/TIMING_PREC) continue;
-    hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k++]);
+  for(int k=0, td = 0, tdk=0, t1 = cpu_hal_get_cycle_count();;) {
+    if((int)(cpu_hal_get_cycle_count() - t1) < tdk) continue;
+    hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k]);
     td += TRANSMIT_TIME_DELAY;
-    if(k>=transmit_NRZI_buffer_cnt) break;
+    tdk = td/TIMING_PREC;
+    if(++k>=transmit_NRZI_buffer_cnt) break;
   }
 #endif
   restart();
@@ -1578,7 +1576,7 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         int  uTime = 250;
 #else
 #ifdef __IMXRT1062__
-        int  uTime = freq_mhz*2;
+        int  uTime = freq_mhz;
 #ifdef TIMING_PREC
         uTime *= TIMING_PREC;
 #endif
