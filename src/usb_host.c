@@ -786,7 +786,7 @@ void sendOnly(void)
     sndA[2] = (out_base )&~(DP | DM);
     sndA[3] = out_base | (DM | DP);
   #endif
-#define TIMING_PREC 4 //add precision
+//#define TIMING_PREC 4 //add precision
 #ifndef TIMING_PREC
   for(k=0;k<transmit_NRZI_buffer_cnt;++k) {
     cpuDelay(TRANSMIT_TIME_DELAY);

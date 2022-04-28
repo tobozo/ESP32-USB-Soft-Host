@@ -81,8 +81,8 @@ typedef xQueueHandle hal_queue_handle_t;
 #define      hal_gpio_pulldown_en(pin)
 #define      hal_enable_irq() interrupts()
 #define      hal_disable_irq() noInterrupts()
-#define cpu_hal_get_cycle_count() (uint32_t) ARM_DWT_CYCCNT
-#define cpu_hal_get_cycle_count64 cpu_hal_get_cycle_count
+#define cpu_hal_get_cycle_count64() ARM_DWT_CYCCNT
+#define cpu_hal_get_cycle_count (uint32_t) cpu_hal_get_cycle_count64
 #define hal_delay(x) delay(x)
 #define hal_get_cpu_mhz() (F_CPU/1000000)
 
