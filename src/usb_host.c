@@ -785,14 +785,19 @@ void sendOnly(void)
     sndA[2] = (out_base )&~(DP | DM);
     sndA[3] = out_base | (DM | DP);
   #endif
+#if defined(ESP32) || defined(__IMXRT1062__)
 #define TIMING_PREC 4 //add precision
+#endif
+
 #ifndef TIMING_PREC
   uint8_t k;
+  #pragma GCC unroll 0
   for(k=0;k<transmit_NRZI_buffer_cnt;++k) {
     cpuDelay(TRANSMIT_TIME_DELAY);
     hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k]);
   }
 #else
+  #pragma GCC unroll 0
   for(int k=0, td = 0, tdk=0, t1 = cpu_hal_get_cycle_count();;) {
     if((int)(cpu_hal_get_cycle_count() - t1) < tdk) continue;
     hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k]);
@@ -829,8 +834,10 @@ START:
   //hal_enable_irq();
   received_NRZI_buffer_bytesCnt = STORE-received_NRZI_buffer;
 
+#if 1
   //early activation for debugging
-  //if(received_NRZI_buffer_bytesCnt > 13) NOTIFY();
+  if(received_NRZI_buffer_bytesCnt > 1) NOTIFY();
+#endif
 }
 
 
