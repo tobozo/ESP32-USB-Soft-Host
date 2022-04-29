@@ -785,9 +785,8 @@ void sendOnly(void)
     sndA[2] = (out_base )&~(DP | DM);
     sndA[3] = out_base | (DM | DP);
   #endif
-#if 1//defined(ESP32) || defined(__IMXRT1062__)
-#define TIMING_PREC 4 //add precision
-#endif
+
+#define TIMING_PREC 4 //optional use of optmized bit-output timings, and configure added precision
   
   uint8_t bitcount = transmit_NRZI_buffer_cnt;
 #ifndef TIMING_PREC

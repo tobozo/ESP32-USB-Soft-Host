@@ -9,9 +9,7 @@
 #endif
 #endif
 
-#if defined(ESP32) || defined(__IMXRT1062__)
 #define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
-#endif
 
 #define USE_TUSB_FIFO
 #ifdef USE_TUSB_FIFO
@@ -104,12 +102,13 @@ typedef xQueueHandle hal_queue_handle_t;
 #define hal_gpio_set_pins_value(v) USBHOST_GPIO->OUT = (v)
 #define hal_pin2value(dp, dm, v) ((v & 1) << (dm)) | ((v == 0) << (dp)) //| (1 << BLINK_GPIO)
 #define hal_set_differential_gpio_value(dp, dm,v) hal_gpio_set_pins_value(hal_pin2value(dp, dm, v))
-/*
+
 #define SET_I(dp, dm)  USBHOST_GPIO->OE &= ~((1 << dp) | (1 << dm))
 #define SET_O(dp, dm)  USBHOST_GPIO->OE |= (1 << dp) | (1 << dm)
 #define SE_J USBHOST_GPIO->OUT = 1 << DP_PIN //clear / set
 #define SE_0 USBHOST_GPIO->OUT = 0 //clear / clear
-*/
+
+#define READ_BOTH_PINS (unsigned)(USBHOST_GPIO->IN & ((1<<DM_PIN) | (1<<DP_PIN)))
 
 inline uint32_t cpu_hal_get_cycle_count() { timer0_uptime_latch_write(1); return csr_read_simple(CSR_TIMER0_UPTIME_CYCLES_ADDR+4); }
 inline uint64_t cpu_hal_get_cycle_count64() { timer0_uptime_latch_write(1); return timer0_uptime_cycles_read(); }
