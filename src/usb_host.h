@@ -101,8 +101,9 @@ typedef xQueueHandle hal_queue_handle_t;
 
 #define      hal_enable_irq() irq_setie(1)
 #define      hal_disable_irq() irq_setie(0)
-
-#define hal_set_differential_gpio_value(dp, dm,v) USBHOST_GPIO->OUT = ((v & 1) << dm) | ((v == 0) << dp) //| (1 << BLINK_GPIO)
+#define hal_gpio_set_pins_value(v) USBHOST_GPIO->OUT = (v)
+#define hal_pin2value(dp, dm, v) ((v & 1) << (dm)) | ((v == 0) << (dp)) //| (1 << BLINK_GPIO)
+#define hal_set_differential_gpio_value(dp, dm,v) hal_gpio_set_pins_value(hal_pin2value(dp, dm, v))
 /*
 #define SET_I(dp, dm)  USBHOST_GPIO->OE &= ~((1 << dp) | (1 << dm))
 #define SET_O(dp, dm)  USBHOST_GPIO->OE |= (1 << dp) | (1 << dm)

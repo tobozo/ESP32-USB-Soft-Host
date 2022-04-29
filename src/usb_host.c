@@ -785,25 +785,56 @@ void sendOnly(void)
     sndA[2] = (out_base )&~(DP | DM);
     sndA[3] = out_base | (DM | DP);
   #endif
-#if defined(ESP32) || defined(__IMXRT1062__)
+#if 1//defined(ESP32) || defined(__IMXRT1062__)
 #define TIMING_PREC 4 //add precision
 #endif
-
+  
+  uint8_t bitcount = transmit_NRZI_buffer_cnt;
 #ifndef TIMING_PREC
-  uint8_t k;
+  uint32_t pin_values[4] = {
+    hal_pin2value(DP_PIN, DM_PIN, 0),
+    hal_pin2value(DP_PIN, DM_PIN, 1),
+    hal_pin2value(DP_PIN, DM_PIN, 2),
+    hal_pin2value(DP_PIN, DM_PIN, 3),
+  };
+  //FIXME: merge with the other GPIO bits
+
   #pragma GCC unroll 0
-  for(k=0;k<transmit_NRZI_buffer_cnt;++k) {
+  for(uint8_t k=0; k<bitcount; ++k) {
     cpuDelay(TRANSMIT_TIME_DELAY);
-    hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k]);
+    //profiling for vexriscv, TIMING_PREC=1
+    //nop: 3.36Mhz
+    //hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k]); //2.57Mhz
+    //hal_set_differential_gpio_value(8, 12, 0); //3.24mhz
+    hal_gpio_set_pins_value(pin_values[transmit_NRZI_buffer[k]]); //2.63Mhz
+    /*switch(transmit_NRZI_buffer[k]) //2.66Mhz
+    {
+      case 0: hal_set_differential_gpio_value(, 12, 0); break;
+      case 1: hal_set_differential_gpio_value(8, 12, 1); break;
+      case 2: hal_set_differential_gpio_value(8, 12, 2); break;
+      case 3: hal_set_differential_gpio_value(8, 12, 3); break;
+    }*/
   }
 #else
   #pragma GCC unroll 0
-  for(int k=0, td = 0, tdk=0, t1 = cpu_hal_get_cycle_count();;) {
+  for(int k=0, td = 0, tdk=0, t1 = cpu_hal_get_cycle_count(); k<bitcount; ) {
     if((int)(cpu_hal_get_cycle_count() - t1) < tdk) continue;
-    hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k]);
+    //profiling for vexriscv, TIMING_PREC=1
+    //nop: 4.59Mhz
+    //hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k]); //3.14mhz
+    //hal_set_differential_gpio_value(8, 12, 0); //4.38mhz
+    hal_set_differential_gpio_value(DP_PIN, DM_PIN, transmit_NRZI_buffer[k]); //3.14mhz
+    //hal_gpio_set_pins_value(pin_values[transmit_NRZI_buffer[k]]); //3.13Mhz
+    /*switch(transmit_NRZI_buffer[k]) //3.08Mhz
+    {
+      case 0: hal_set_differential_gpio_value(8, 12, 0); break;
+      case 1: hal_set_differential_gpio_value(8, 12, 1); break;
+      case 2: hal_set_differential_gpio_value(8, 12, 2); break;
+      case 3: hal_set_differential_gpio_value(8, 12, 3); break;
+    }*/
     td += TRANSMIT_TIME_DELAY;
     tdk = td/TIMING_PREC;
-    if(++k>=transmit_NRZI_buffer_cnt) break;
+    ++k;
   }
 #endif
   restart();
