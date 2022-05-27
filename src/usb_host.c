@@ -153,7 +153,7 @@ int TM_OUT              = 64;    //receive time out no activity on bus
 #define TIME_FACTOR_BITS 6
 #endif
 #else
-#define TIME_FACTOR_BITS 1 //vexriscv 100Mhz
+#define TIME_FACTOR_BITS 2 //vexriscv 100Mhz (worked: 1, 2, 3, 4)
 #endif
 
 static uint32_t _getCycleCount32(void)
@@ -205,7 +205,8 @@ static uint8_t _getCycleCount8d8(void)
 #warning assumes DM_PIN > DP_PIN
 #endif
 #ifndef READ_BOTH_PINS
-#define READ_BOTH_PINS ((hal_gpio_read(DM_PIN) ? 1<<(8+DM_PIN - DP_PIN) : 0) | (hal_gpio_read(DP_PIN) ? 0x100 : 0))
+#error READ_BOTH_PINS is time sensitive! define an optimized way
+//#define READ_BOTH_PINS ((hal_gpio_read(DM_PIN) ? 1<<(8+DM_PIN - DP_PIN) : 0) | (hal_gpio_read(DP_PIN) ? 0x100 : 0))
 #endif
 #ifndef SET_I
 #define SET_I(dp, dm)  { hal_gpio_set_direction(dp, 0); hal_gpio_set_direction(dm, 0); }
@@ -711,7 +712,7 @@ int parse_received_NRZI_buffer(void)
       terr+=tm;
     } else {
       //terr = 0;
-      int delta = ((((curr+terr)&0xff))*TIME_MULT+TIME_SCALE/2)/TIME_SCALE;
+      int delta = ((((tm+terr)))*TIME_MULT+TIME_SCALE/2)/TIME_SCALE;
 
       for(int k=0;k<delta;k++) {
         int incc = 1;
@@ -864,7 +865,7 @@ START:
   //hal_enable_irq();
   received_NRZI_buffer_bytesCnt = STORE-received_NRZI_buffer;
 
-#if 1
+#if 0
   //early activation for debugging
   if(received_NRZI_buffer_bytesCnt > 1) NOTIFY();
 #endif
@@ -1607,7 +1608,7 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
 
       if(!calibrated) {
         //calibrate delay divide 2
-        #define DELAY_CORR 2
+        #define DELAY_CORR 0 //correction not needed with new timing algorithm
         int freq_mhz = hal_get_cpu_mhz();
 #ifdef ESP32        
         int  uTime = 250;
@@ -1625,7 +1626,7 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         printf("cpu freq = %d MHz\n", freq_mhz);
         TM_OUT = freq_mhz/2;
         // 8  - func divided clock to 8, 1.5 - MHz USB LS //NOTE: N=8 noy anymore constant, depends on clock frequency
-        TIME_MULT = (int)(TIME_SCALE/(freq_mhz/(1<<TIME_FACTOR_BITS)/1.5)+0.5); //this fixes the timing bug!!
+        TIME_MULT = (int)(TIME_SCALE*(1.5*(1<<TIME_FACTOR_BITS))/freq_mhz+0.5); //this fixes the timing bug!!
         printf("TIME_MULT = %d \n",TIME_MULT);
 
         int     TRANSMIT_TIME_DELAY_OPT = 0;
