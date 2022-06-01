@@ -53,8 +53,8 @@ extern "C" {
 // for OS None, we don't get preempted
 #define CFG_FIFO_MUTEX      (CFG_TUSB_OS != OPT_OS_NONE)
 
-#if CFG_FIFO_MUTEX
 #include "osal/osal.h"
+#if CFG_FIFO_MUTEX
 #define tu_fifo_mutex_t  osal_mutex_t
 #endif
 

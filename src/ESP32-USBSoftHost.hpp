@@ -141,7 +141,7 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
 
   setDelay(4);
   
-  static USBMessage usb_msg_queue_buffer[10];
+  static USBMessage usb_msg_queue_buffer[100];
   usb_msg_queue = hal_queue_create(sizeof(usb_msg_queue_buffer)/sizeof(usb_msg_queue_buffer[0]), sizeof(USBMessage), usb_msg_queue_buffer);
 
   initStates(
