@@ -122,9 +122,9 @@ hal_queue_handle_t hal_queue_create(size_t n, size_t sz, void *buffer)
 
 
 
-int TRANSMIT_TIME_DELAY = 110;  //delay each bit transmit
-int TIME_MULT           = 25;    //received time factor delta clocks* TIME_MULT/TIME_SCALE
-int TM_OUT              = 64;    //receive time out no activity on bus
+int FAST_DATA TRANSMIT_TIME_DELAY = 110;  //delay each bit transmit
+int FAST_DATA TIME_MULT           = 25;    //received time factor delta clocks* TIME_MULT/TIME_SCALE
+int FAST_DATA TM_OUT              = 64;    //receive time out no activity on bus
 #define  TIME_SCALE       1024
 
 //#define TEST
@@ -229,31 +229,31 @@ static uint8_t _getCycleCount8d8(void)
 #endif
 
 //must be setup ech time with setPins
-uint32_t DP_PIN;
-uint32_t DM_PIN;
+uint32_t FAST_DATA DP_PIN;
+uint32_t FAST_DATA DM_PIN;
 
-uint32_t DM_PIN_M;
-uint32_t DP_PIN_M;
-uint16_t M_ONE;
-uint16_t P_ONE;
-uint32_t RD_MASK;
-uint32_t RD_SHIFT;
+uint32_t FAST_DATA DM_PIN_M;
+uint32_t FAST_DATA DP_PIN_M;
+uint16_t FAST_DATA M_ONE;
+uint16_t FAST_DATA P_ONE;
+uint32_t FAST_DATA RD_MASK;
+uint32_t FAST_DATA RD_SHIFT;
 //end must be setup ech time with setPins
 
 // temporary used insize lowlevel
-volatile uint8_t received_NRZI_buffer_bytesCnt;
-uint16_t received_NRZI_buffer[DEF_BUFF_SIZE];
+volatile uint8_t FAST_DATA received_NRZI_buffer_bytesCnt;
+uint16_t FAST_DATA received_NRZI_buffer[DEF_BUFF_SIZE];
 
 volatile uint8_t transmit_bits_buffer_store_cnt;
 //uint8_t transmit_bits_buffer_store[DEF_BUFF_SIZE];
-uint8_t* transmit_bits_buffer_store = (uint8_t*)&received_NRZI_buffer[0];
+uint8_t* FAST_DATA transmit_bits_buffer_store = (uint8_t*)&received_NRZI_buffer[0];
 
-volatile uint8_t transmit_NRZI_buffer_cnt;
-uint8_t transmit_NRZI_buffer[DEF_BUFF_SIZE];
+volatile uint8_t FAST_DATA transmit_NRZI_buffer_cnt;
+uint8_t FAST_DATA transmit_NRZI_buffer[DEF_BUFF_SIZE];
 
-volatile uint8_t decoded_receive_buffer_head;
-volatile uint8_t decoded_receive_buffer_tail;
-uint8_t decoded_receive_buffer[DEF_BUFF_SIZE];
+volatile uint8_t FAST_DATA decoded_receive_buffer_head;
+volatile uint8_t FAST_DATA decoded_receive_buffer_tail;
+uint8_t FAST_DATA decoded_receive_buffer[DEF_BUFF_SIZE];
 // end temporary used insize lowlevel
 
 #ifdef ESP32
@@ -443,15 +443,15 @@ typedef struct
 
 } sUsbContStruct;
 
-sUsbContStruct * current;
+sUsbContStruct FAST_DATA * current;
 void usb_disable_current(void) { current->isValid = 0; }
 
 void parseImmed(sUsbContStruct * pcurrent)
 {
-  static sCfgDesc      cfg;
-  static sIntfDesc     sIntf;
-  static HIDDescriptor hid[4];
-  static sEPDesc       epd;
+  static FAST_DATA sCfgDesc      cfg;
+  static FAST_DATA sIntfDesc     sIntf;
+  static FAST_DATA HIDDescriptor hid[4];
+  static FAST_DATA sEPDesc       epd;
   /*static int           cfgCount   = 0;
   static int           sIntfCount   = 0;*/
   static int           hidCount   = 0;
@@ -489,7 +489,7 @@ void parseImmed(sUsbContStruct * pcurrent)
 }
 
 #ifdef WR_SIMULTA
-uint32_t sndA[4]  = {0,0,0,0};
+uint32_t FAST_DATA sndA[4]  = {0,0,0,0};
 #endif
 
 
@@ -928,8 +928,8 @@ void pu_Cmd(uint8_t cmd,uint8_t bmRequestType, uint8_t bmRequest,uint16_t wValue
 
 
 
-uint8_t ACK_BUFF[0x20];
-int ACK_BUFF_CNT = 0;
+uint8_t FAST_DATA ACK_BUFF[0x20];
+int FAST_DATA ACK_BUFF_CNT = 0;
 
 
 void ACK(void)
@@ -1461,7 +1461,7 @@ void setPins(int DPPin,int DMPin)
 }
 
 
-sUsbContStruct  current_usb[NUM_USB];
+sUsbContStruct FAST_DATA  current_usb[NUM_USB];
 
 
 int checkPins(int dp,int dm)
@@ -1516,7 +1516,7 @@ float testDelay6(float freq_MHz)
   return res;
 }
 
-uint8_t arr[0x200];
+uint8_t FAST_DATA arr[0x200];
 
 #define F_USB_LOWSPEED 1500000
 #define F_TIMING_BIT_ADDPRECISION 8
@@ -1531,7 +1531,8 @@ void gpio_test(void) //test with improved timing
     {
       int32_t t = cpu_hal_get_cycle_count() - xt1;
       if(t < td>>F_TIMING_BIT_ADDPRECISION) continue;
-      hal_set_differential_gpio_value(DP_PIN, DM_PIN, b^=1);
+      b^=1;
+      hal_set_differential_gpio_value(DP_PIN, DM_PIN, b);
       td += ((F_CPU/1000)*(1<<F_TIMING_BIT_ADDPRECISION))/(F_USB_LOWSPEED/1000);
       ++i;
     }
@@ -1708,7 +1709,7 @@ void usb_process(void)
 
 void printState(void)
 {
-  static int cntl = 0;
+  static int FAST_DATA cntl = 0;
   cntl++;
   int ref = cntl%NUM_USB;
   sUsbContStruct * pcurrent = &current_usb[ref];
