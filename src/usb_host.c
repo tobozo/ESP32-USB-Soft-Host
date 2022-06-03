@@ -59,7 +59,7 @@ void hal_timer_setup(timer_idx_t timer_num, uint32_t alarm_value, timer_isr_t ti
 #ifdef USE_TUSB_FIFO
 //static int __attribute__ ((section (".fast_data"))) dummy = -3; //dummy data to test init values
 
-hal_queue_handle_t hal_queue_create(size_t n, size_t sz, void *buffer)
+hal_queue_handle_t FAST_CODE hal_queue_create(size_t n, size_t sz, void *buffer)
 {
   tu_fifo_t f;
   //printf("in %s at 0x%p, buffer at 0x%p, dummy at 0x%p = %d\n", __PRETTY_FUNCTION__, hal_queue_create, buffer, &dummy, dummy);
@@ -448,9 +448,9 @@ typedef struct
 } sUsbContStruct;
 
 sUsbContStruct FAST_DATA *current;
-void usb_disable_current(void) { current->isValid = 0; }
+void FAST_CODE usb_disable_current(void) { current->isValid = 0; }
 
-void parseImmed(sUsbContStruct * pcurrent)
+void FAST_CODE parseImmed(sUsbContStruct * pcurrent)
 {
   static FAST_DATA sCfgDesc      cfg;
   static FAST_DATA sIntfDesc     sIntf;
@@ -534,7 +534,7 @@ static inline uint8_t decoded_receive_buffer_size(void)
 
 
 
-uint8_t /*FAST_CODE*/ cal5(void)
+uint8_t FAST_CODE cal5(void)
 {
   uint8_t   crcb;
   uint8_t   rem;
@@ -555,7 +555,7 @@ uint8_t /*FAST_CODE*/ cal5(void)
 
 
 
-uint32_t /*FAST_CODE*/ cal16(void)
+uint32_t FAST_CODE cal16(void)
 {
   uint32_t   crcb;
   uint32_t   rem;
@@ -582,7 +582,7 @@ static inline void seB(int bit)
 
 
 
-void pu_MSB(uint16_t msg,int N)
+void FAST_CODE pu_MSB(uint16_t msg,int N)
 {
   for(int k=0;k<N;k++) {
     seB(msg&(1<<(N-1-k))?1:0);
@@ -591,7 +591,7 @@ void pu_MSB(uint16_t msg,int N)
 
 
 
-void pu_LSB(uint16_t msg,int N)
+void FAST_CODE pu_LSB(uint16_t msg,int N)
 {
   for(int k=0;k<N;k++) {
     seB(msg&(1<<(k))?1:0);
@@ -600,7 +600,7 @@ void pu_LSB(uint16_t msg,int N)
 
 
 
-void repack(void)
+void FAST_CODE repack(void)
 {
   int last = USB_LS_J;
   int cntOnes = 0;
@@ -645,7 +645,7 @@ void repack(void)
 
 
 
-uint8_t rev8(uint8_t j)
+uint8_t FAST_CODE rev8(uint8_t j)
 {
   uint8_t res = 0;
   for(int i=0;i<8;i++) {
@@ -657,7 +657,7 @@ uint8_t rev8(uint8_t j)
 
 
 
-uint16_t rev16(uint16_t j)
+uint16_t FAST_CODE rev16(uint16_t j)
 {
   uint16_t res = 0;
   for(int i=0;i<16;i++) {
@@ -674,7 +674,7 @@ uint16_t debug_buff[0x100];
 #endif
 
 
-void (*onLedBlinkCB)(int on_off) = NULL;
+void FAST_DATA (*onLedBlinkCB)(int on_off) = NULL;
 #define NOTIFY() if(onLedBlinkCB) onLedBlinkCB(1)
 
 
@@ -876,7 +876,7 @@ START:
 
 
 
-int /*FAST_CODE*/ sendRecieve(void)
+int FAST_CODE sendRecieve(void)
 {
   sendRecieveNParse();
   return parse_received_NRZI_buffer();
@@ -884,7 +884,7 @@ int /*FAST_CODE*/ sendRecieve(void)
 
 
 
-void /*FAST_CODE*/ SOF(void)
+void FAST_CODE SOF(void)
 {
   if(1) {
     repack();
@@ -894,7 +894,7 @@ void /*FAST_CODE*/ SOF(void)
 
 
 
-void pu_Addr(uint8_t cmd,uint8_t addr,uint8_t eop)
+void FAST_CODE pu_Addr(uint8_t cmd,uint8_t addr,uint8_t eop)
 {
   pu_MSB(T_START,8);
   pu_MSB(cmd,8);//setup
@@ -906,7 +906,7 @@ void pu_Addr(uint8_t cmd,uint8_t addr,uint8_t eop)
 
 
 
-void pu_ShortCmd(uint8_t cmd)
+void FAST_CODE pu_ShortCmd(uint8_t cmd)
 {
   pu_MSB(T_START,8);
   pu_MSB(cmd,8);//setup
@@ -916,7 +916,7 @@ void pu_ShortCmd(uint8_t cmd)
 
 
 
-void pu_Cmd(uint8_t cmd,uint8_t bmRequestType, uint8_t bmRequest,uint16_t wValue,uint16_t wIndex,uint16_t wLen)
+void FAST_CODE pu_Cmd(uint8_t cmd,uint8_t bmRequestType, uint8_t bmRequest,uint16_t wValue,uint16_t wIndex,uint16_t wLen)
 {
   pu_MSB(T_START,8);
   pu_MSB(cmd,8);//setup
@@ -934,8 +934,7 @@ void pu_Cmd(uint8_t cmd,uint8_t bmRequestType, uint8_t bmRequest,uint16_t wValue
 uint8_t FAST_DATA ACK_BUFF[0x20];
 int FAST_DATA ACK_BUFF_CNT = 0;
 
-
-void /*FAST_CODE*/ ACK(void)
+void FAST_CODE ACK(void)
 {
   transmit_NRZI_buffer_cnt =0;
   if(ACK_BUFF_CNT==0) {
@@ -1224,7 +1223,7 @@ void FAST_CODE timerCallBack(void)
 
 
 
-void Request( uint8_t cmd, uint8_t addr, uint8_t eop, uint8_t dataCmd,uint8_t bmRequestType, uint8_t bmRequest, uint16_t wValue, uint16_t wIndex, uint16_t wLen, uint16_t waitForBytes)
+void FAST_CODE Request( uint8_t cmd, uint8_t addr, uint8_t eop, uint8_t dataCmd,uint8_t bmRequestType, uint8_t bmRequest, uint16_t wValue, uint16_t wIndex, uint16_t wLen, uint16_t waitForBytes)
 {
   current->rq.cmd  = cmd;
   current->rq.addr = addr;
@@ -1244,7 +1243,7 @@ void Request( uint8_t cmd, uint8_t addr, uint8_t eop, uint8_t dataCmd,uint8_t bm
 
 
 
-void RequestSend(uint8_t cmd,   uint8_t addr,uint8_t eop, uint8_t  dataCmd,uint8_t bmRequestType, uint8_t bmRequest,uint16_t wValue,uint16_t wIndex,uint16_t wLen,uint16_t transmitL1Bytes,uint8_t* data)
+void FAST_CODE RequestSend(uint8_t cmd,   uint8_t addr,uint8_t eop, uint8_t  dataCmd,uint8_t bmRequestType, uint8_t bmRequest,uint16_t wValue,uint16_t wIndex,uint16_t wLen,uint16_t transmitL1Bytes,uint8_t* data)
 {
   current->rq.cmd  = cmd;
   current->rq.addr = addr;
@@ -1265,7 +1264,7 @@ void RequestSend(uint8_t cmd,   uint8_t addr,uint8_t eop, uint8_t  dataCmd,uint8
 }
 
 
-void RequestIn(uint8_t cmd,   uint8_t addr,uint8_t eop,uint16_t waitForBytes)
+void FAST_CODE RequestIn(uint8_t cmd,   uint8_t addr,uint8_t eop,uint16_t waitForBytes)
 {
   current->rq.cmd  = cmd;
   current->rq.addr = addr;
@@ -1277,15 +1276,15 @@ void RequestIn(uint8_t cmd,   uint8_t addr,uint8_t eop,uint16_t waitForBytes)
 }
 
 
-void (*usbMess)(uint8_t src,uint8_t len,uint8_t *data) = NULL;
+void FAST_DATA (*usbMess)(uint8_t src,uint8_t len,uint8_t *data) = NULL;
 
-void set_usb_mess_cb( onusbmesscb_t onUSBMessCb )
+void FAST_CODE set_usb_mess_cb( onusbmesscb_t onUSBMessCb )
 {
   usbMess = onUSBMessCb;
 }
 
 
-void (*onDetectCB)(uint8_t usbNum, void *device) = NULL;
+void FAST_DATA (*onDetectCB)(uint8_t usbNum, void *device) = NULL;
 
 void set_ondetect_cb( ondetectcb_t cb )
 {
@@ -1293,7 +1292,7 @@ void set_ondetect_cb( ondetectcb_t cb )
 }
 
 
-void set_onled_blink_cb( onledblinkcb_t cb )
+void FAST_CODE set_onled_blink_cb( onledblinkcb_t cb )
 {
   onLedBlinkCB = cb;
 }
@@ -1464,7 +1463,7 @@ void FAST_CODE setPins(int DPPin,int DMPin)
 }
 
 
-sUsbContStruct /*FAST_DATA*/ current_usb[NUM_USB]; //this takes about 3k of data, and stop working if sent to SRAM
+sUsbContStruct FAST_DATA current_usb[NUM_USB];
 
 
 static inline int checkPins(int dp,int dm)
@@ -1595,18 +1594,18 @@ void FAST_CODE initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP
       setPins(current->DP,current->DM);
       //gpio_test();
 
-      printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
+      printf("READ_BOTH_PINS = %04x\n", (int)READ_BOTH_PINS);
       SET_O(DP_PIN, DM_PIN);
       SE_0;
       SE_J;
       SE_0;
       SET_I(DP_PIN, DM_PIN);
-      printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
+      printf("READ_BOTH_PINS = %04x\n", (int)READ_BOTH_PINS);
       hal_gpio_set_direction(current->DP, GPIO_MODE_OUTPUT);
       hal_gpio_set_direction(current->DM, GPIO_MODE_OUTPUT);
-      printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
+      printf("READ_BOTH_PINS = %04x\n", (int)READ_BOTH_PINS);
       SET_I(DP_PIN, DM_PIN);
-      printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
+      printf("READ_BOTH_PINS = %04x\n", (int)READ_BOTH_PINS);
 
       if(!calibrated) {
         //calibrate delay divide 2
@@ -1670,7 +1669,7 @@ void FAST_CODE initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP
 
 
 
-void usbSetFlags(int _usb_num,uint8_t flags)
+void FAST_CODE usbSetFlags(int _usb_num,uint8_t flags)
 {
   if(_usb_num<NUM_USB&&_usb_num>=0) {
     current_usb[_usb_num].flags_new =  flags;
@@ -1679,7 +1678,7 @@ void usbSetFlags(int _usb_num,uint8_t flags)
 
 
 
-uint8_t usbGetFlags(int _usb_num)
+uint8_t FAST_CODE usbGetFlags(int _usb_num)
 {
   if(_usb_num<NUM_USB&&_usb_num>=0) {
     return current_usb[_usb_num].flags;
@@ -1704,11 +1703,9 @@ void IRAM_ATTR usb_process(void)
   }
 }
 
-
-
-void printState(void)
+void FAST_CODE printState(void)
 {
-  static int /*FAST_DATA*/ cntl = 0; //this function is not needed to work in realtime
+  static int FAST_DATA cntl = 0;
   cntl++;
   int ref = cntl%NUM_USB;
   sUsbContStruct * pcurrent = &current_usb[ref];

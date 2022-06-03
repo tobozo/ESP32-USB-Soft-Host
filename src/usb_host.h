@@ -108,8 +108,8 @@ typedef xQueueHandle hal_queue_handle_t;
 
 #define READ_BOTH_PINS (((USBHOST_GPIO->IN & RD_MASK)<<8)>>RD_SHIFT)
 
-static inline uint32_t cpu_hal_get_cycle_count() { timer0_uptime_latch_write(1); return csr_read_simple(CSR_TIMER0_UPTIME_CYCLES_ADDR+4); }
-static inline uint64_t cpu_hal_get_cycle_count64() { timer0_uptime_latch_write(1); return timer0_uptime_cycles_read(); }
+static inline uint32_t cpu_hal_get_cycle_count(void) { timer0_uptime_latch_write(1); return csr_read_simple(CSR_TIMER0_UPTIME_CYCLES_ADDR+4); }
+static inline uint64_t cpu_hal_get_cycle_count64(void) { timer0_uptime_latch_write(1); return timer0_uptime_cycles_read(); }
 #define F_CPU LITETIMER_BASE_FREQUENCY
 #define hal_delay(x) {long t1=cpu_hal_get_cycle_count64()+x*(F_CPU/1000); while(long(cpu_hal_get_cycle_count() - t1) < 0); }
 #define hal_get_cpu_mhz() (F_CPU/1000000)
