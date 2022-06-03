@@ -57,11 +57,15 @@ void hal_timer_setup(timer_idx_t timer_num, uint32_t alarm_value, timer_isr_t ti
 #endif //ESP32
 
 #ifdef USE_TUSB_FIFO
+//static int __attribute__ ((section (".fast_data"))) dummy = -3; //dummy data to test init values
+
 hal_queue_handle_t hal_queue_create(size_t n, size_t sz, void *buffer)
 {
   tu_fifo_t f;
+  //printf("in %s at 0x%p, buffer at 0x%p, dummy at 0x%p = %d\n", __PRETTY_FUNCTION__, hal_queue_create, buffer, &dummy, dummy);
   memset(&f, 0, sizeof(f));
   tu_fifo_config(&f, buffer, n, sz, true);
+  //printf("%s done\n", __PRETTY_FUNCTION__);
   return f;
 }
 #endif
@@ -156,12 +160,12 @@ int FAST_DATA TM_OUT              = 64;    //receive time out no activity on bus
 #define TIME_FACTOR_BITS 2 //vexriscv 100Mhz (worked: 1, 2, 3, 4)
 #endif
 
-static uint32_t _getCycleCount32(void)
+static inline uint32_t _getCycleCount32(void)
 {
   uint32_t ccount = cpu_hal_get_cycle_count();
   return  ccount;
 }
-static uint8_t _getCycleCount8d8(void)
+static inline uint8_t _getCycleCount8d8(void)
 {
   uint32_t ccount = _getCycleCount32();
   return ccount>>TIME_FACTOR_BITS;
@@ -327,12 +331,12 @@ void setDelay(uint16_t ticks)
 #else //not ESP32
 
 void setDelay(uint16_t ticks) {}
-void cpuDelay(uint16_t x)
+static inline void cpuDelay(uint16_t x)
 {
- uint32_t t0 = cpu_hal_get_cycle_count();
+ register uint32_t t0 = cpu_hal_get_cycle_count();
  for(;;)
  {
-   uint32_t t1 =  cpu_hal_get_cycle_count();
+   register uint32_t t1 =  cpu_hal_get_cycle_count();
    t1 -= t0;
    if(t1 > x)
      break;
@@ -443,7 +447,7 @@ typedef struct
 
 } sUsbContStruct;
 
-sUsbContStruct FAST_DATA * current;
+sUsbContStruct FAST_DATA *current;
 void usb_disable_current(void) { current->isValid = 0; }
 
 void parseImmed(sUsbContStruct * pcurrent)
@@ -494,21 +498,21 @@ uint32_t FAST_DATA sndA[4]  = {0,0,0,0};
 
 
 
-void restart(void)
+static inline void restart(void)
 {
   transmit_NRZI_buffer_cnt = 0;
 }
 
 
 
-void decoded_receive_buffer_clear(void)
+static inline void decoded_receive_buffer_clear(void)
 {
   decoded_receive_buffer_tail = decoded_receive_buffer_head;
 }
 
 
 
-void decoded_receive_buffer_put(uint8_t val)
+static inline void decoded_receive_buffer_put(uint8_t val)
 {
   decoded_receive_buffer[decoded_receive_buffer_head] = val;
   decoded_receive_buffer_head++;
@@ -516,21 +520,21 @@ void decoded_receive_buffer_put(uint8_t val)
 
 
 
-uint8_t decoded_receive_buffer_get(void)
+static inline uint8_t decoded_receive_buffer_get(void)
 {
   return decoded_receive_buffer[decoded_receive_buffer_tail++];
 }
 
 
 
-uint8_t decoded_receive_buffer_size(void)
+static inline uint8_t decoded_receive_buffer_size(void)
 {
   return (uint8_t )(decoded_receive_buffer_head-decoded_receive_buffer_tail);
 }
 
 
 
-uint8_t cal5(void)
+uint8_t FAST_CODE cal5(void)
 {
   uint8_t   crcb;
   uint8_t   rem;
@@ -551,7 +555,7 @@ uint8_t cal5(void)
 
 
 
-uint32_t cal16(void)
+uint32_t FAST_CODE cal16(void)
 {
   uint32_t   crcb;
   uint32_t   rem;
@@ -571,8 +575,7 @@ uint32_t cal16(void)
 }
 
 
-
-void seB(int bit)
+static inline void seB(int bit)
 {
   transmit_bits_buffer_store[transmit_bits_buffer_store_cnt++] = bit;
 }
@@ -776,7 +779,7 @@ int parse_received_NRZI_buffer(void)
 
 
 //#define WR_SIMULTA
-void sendOnly(void)
+void FAST_CODE sendOnly(void)
 {
   SET_O(DP_PIN, DM_PIN);
   #ifdef WR_SIMULTA
@@ -841,7 +844,7 @@ void sendOnly(void)
   SET_I(DP_PIN, DM_PIN);
 }
 
-void sendRecieveNParse(void)
+void FAST_CODE sendRecieveNParse(void)
 {
   register uint32_t R3;
   register uint16_t *STORE = received_NRZI_buffer;
@@ -873,7 +876,7 @@ START:
 
 
 
-int sendRecieve(void)
+int FAST_CODE sendRecieve(void)
 {
   sendRecieveNParse();
   return parse_received_NRZI_buffer();
@@ -881,7 +884,7 @@ int sendRecieve(void)
 
 
 
-void SOF(void)
+void FAST_CODE SOF(void)
 {
   if(1) {
     repack();
@@ -932,7 +935,7 @@ uint8_t FAST_DATA ACK_BUFF[0x20];
 int FAST_DATA ACK_BUFF_CNT = 0;
 
 
-void ACK(void)
+void FAST_CODE ACK(void)
 {
   transmit_NRZI_buffer_cnt =0;
   if(ACK_BUFF_CNT==0) {
@@ -949,7 +952,7 @@ void ACK(void)
 }
 
 
-void timerCallBack(void)
+void FAST_CODE timerCallBack(void)
 {
   decoded_receive_buffer_clear();
 
@@ -1296,7 +1299,7 @@ void set_onled_blink_cb( onledblinkcb_t cb )
 }
 
 
-void fsm_Mashine(void)
+void FAST_CODE fsm_Mashine(void)
 {
   if(!current->bComplete) return;
   current->bComplete = 0;
@@ -1439,7 +1442,7 @@ void fsm_Mashine(void)
 
 
 
-void setPins(int DPPin,int DMPin)
+void FAST_CODE setPins(int DPPin,int DMPin)
 {
   DP_PIN = DPPin;
   DM_PIN = DMPin;
@@ -1461,10 +1464,10 @@ void setPins(int DPPin,int DMPin)
 }
 
 
-sUsbContStruct FAST_DATA  current_usb[NUM_USB];
+sUsbContStruct /*FAST_DATA*/ current_usb[NUM_USB]; //this takes about 3k of data, and stop working if sent to SRAM
 
 
-int checkPins(int dp,int dm)
+static inline int checkPins(int dp,int dm)
 {
   int diff = abs(dp-dm);
   if(diff>7||diff==0) {
@@ -1484,7 +1487,7 @@ int64_t get_system_time_us(void)
 }
 */
 
-float testDelay6(float freq_MHz)
+float FAST_CODE testDelay6(float freq_MHz)
 {
   // 6 bits must take 4.0 uSec
   #define SEND_BITS 120
@@ -1516,11 +1519,9 @@ float testDelay6(float freq_MHz)
   return res;
 }
 
-uint8_t FAST_DATA arr[0x200];
-
 #define F_USB_LOWSPEED 1500000
 #define F_TIMING_BIT_ADDPRECISION 8
-void gpio_test(void) //test with improved timing
+void FAST_CODE gpio_test(void) //test with improved timing
 {
     hal_gpio_set_direction(DP_PIN, 1);
     hal_gpio_set_direction(DM_PIN, 1);
@@ -1538,7 +1539,7 @@ void gpio_test(void) //test with improved timing
     }
 }
 
-void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
+void FAST_CODE initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
 {
   decoded_receive_buffer_head = 0;
   decoded_receive_buffer_tail = 0;
@@ -1686,9 +1687,7 @@ uint8_t usbGetFlags(int _usb_num)
   return  0;
 }
 
-
-
-void usb_process(void)
+void IRAM_ATTR usb_process(void)
 {
 #ifdef ESP32
   #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
@@ -1709,7 +1708,7 @@ void usb_process(void)
 
 void printState(void)
 {
-  static int FAST_DATA cntl = 0;
+  static int /*FAST_DATA*/ cntl = 0; //this function is not needed to work in realtime
   cntl++;
   int ref = cntl%NUM_USB;
   sUsbContStruct * pcurrent = &current_usb[ref];

@@ -66,8 +66,6 @@ typedef xQueueHandle hal_queue_handle_t;
 #define TIMER_CB_HAS_PARAM
 #else //not ESP32
 #include <math.h>
-#undef IRAM_ATTR
-#define IRAM_ATTR
 #define      hal_gpio_pad_select_gpio(pin)
 
 #ifdef __IMXRT1062__
@@ -282,8 +280,9 @@ typedef struct
 static xQueueHandle timer_queue = NULL;
 #endif
 
-#ifdef TIMER_INTERVAL0_SEC
-static void IRAM_ATTR usbhost_timer_cb(void *para)
+
+#if 0 //def TIMER_INTERVAL0_SEC //not needed for LiteX implementation
+void /*IRAM_ATTR*/ usbhost_timer_cb(void *para)
 {
   #if defined USE_NATIVE_GROUP_TIMERS
     timer_group_clr_intr_status_in_isr(TIMER_GROUP_0, TIMER_0);
