@@ -534,7 +534,7 @@ static inline uint8_t decoded_receive_buffer_size(void)
 
 
 
-uint8_t FAST_CODE cal5(void)
+uint8_t /*FAST_CODE*/ cal5(void)
 {
   uint8_t   crcb;
   uint8_t   rem;
@@ -555,7 +555,7 @@ uint8_t FAST_CODE cal5(void)
 
 
 
-uint32_t FAST_CODE cal16(void)
+uint32_t /*FAST_CODE*/ cal16(void)
 {
   uint32_t   crcb;
   uint32_t   rem;
@@ -678,7 +678,7 @@ void (*onLedBlinkCB)(int on_off) = NULL;
 #define NOTIFY() if(onLedBlinkCB) onLedBlinkCB(1)
 
 
-int parse_received_NRZI_buffer(void)
+int FAST_CODE parse_received_NRZI_buffer(void)
 {
 
   if(!received_NRZI_buffer_bytesCnt) return 0;
@@ -876,7 +876,7 @@ START:
 
 
 
-int FAST_CODE sendRecieve(void)
+int /*FAST_CODE*/ sendRecieve(void)
 {
   sendRecieveNParse();
   return parse_received_NRZI_buffer();
@@ -884,7 +884,7 @@ int FAST_CODE sendRecieve(void)
 
 
 
-void FAST_CODE SOF(void)
+void /*FAST_CODE*/ SOF(void)
 {
   if(1) {
     repack();
@@ -935,7 +935,7 @@ uint8_t FAST_DATA ACK_BUFF[0x20];
 int FAST_DATA ACK_BUFF_CNT = 0;
 
 
-void FAST_CODE ACK(void)
+void /*FAST_CODE*/ ACK(void)
 {
   transmit_NRZI_buffer_cnt =0;
   if(ACK_BUFF_CNT==0) {
