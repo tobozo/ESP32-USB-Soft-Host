@@ -33,6 +33,9 @@
    Changes by tobozo (march 2021):
      - Arduino IDE compliance (mostly code regression to esp-idf 3.x)
      - Added callbacks (data and device detection)
+   Changes by tobozo (aug 2022):
+     - Quick & dirty cpuDelay() to enable ESP32-S2 support when CONFIG_ESP_SYSTEM_MEMPROT_FEATURE is enabled (default on Arduino IDE)
+
 \*/
 
 
@@ -40,23 +43,24 @@
 
 // Arduino IDE complains about volatile at init, but we don't care
 #pragma GCC diagnostic ignored "-Wdiscarded-qualifiers"
+#pragma GCC diagnostic ignored "-Wunused-variable"
 
 
-#define T_START   0b00000001
-#define T_ACK     0b01001011
-#define T_NACK    0b01011010
-#define T_SOF    0b10100101
-#define T_SETUP  0b10110100
-#define T_DATA0  0b11000011
-#define T_DATA1  0b11010010
-#define T_DATA2  0b11100001
-#define T_OUT    0b10000111
-#define T_IN    0b10010110
+#define T_START      0b00000001
+#define T_ACK        0b01001011
+#define T_NACK       0b01011010
+#define T_SOF        0b10100101
+#define T_SETUP      0b10110100
+#define T_DATA0      0b11000011
+#define T_DATA1      0b11010010
+#define T_DATA2      0b11100001
+#define T_OUT        0b10000111
+#define T_IN         0b10010110
 
-#define T_ERR    0b00111100
-#define T_PRE    0b00111100
-#define T_NYET  0b01101001
-#define T_STALL  0b01111000
+#define T_ERR        0b00111100
+#define T_PRE        0b00111100
+#define T_NYET       0b01101001
+#define T_STALL      0b01111000
 
 // local non std
 #define T_NEED_ACK   0b01111011
@@ -74,8 +78,6 @@
 #define SMALL_NO_DATA 36
 
 
-
-
 int TRANSMIT_TIME_DELAY = 110;  //delay each bit transmit
 int TIME_MULT           = 25;    //received time factor delta clocks* TIME_MULT/TIME_SCALE
 int TM_OUT              = 64;    //receive time out no activity on bus
@@ -88,12 +90,12 @@ int TM_OUT              = 64;    //receive time out no activity on bus
   #define TOUT  (TM_OUT)
 #endif
 
-static uint32_t _getCycleCount32()
+uint32_t _getCycleCount32()
 {
   uint32_t ccount = cpu_hal_get_cycle_count();
   return  ccount;
 }
-static uint8_t _getCycleCount8d8(void)
+uint8_t _getCycleCount8d8(void)
 {
   uint32_t ccount = cpu_hal_get_cycle_count();
   return ccount>>3;
@@ -103,7 +105,7 @@ static uint8_t _getCycleCount8d8(void)
 #define SE_J  { *snd[1][0] = (1 << DM_PIN);*snd[1][1] = (1 << DP_PIN); }
 #define SE_0  { *snd[2][0] = (1 << DM_PIN);*snd[2][1] = (1 << DP_PIN); }
 
-#if CONFIG_IDF_TARGET_ESP32
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
   #define SET_I { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DM_PIN]); GPIO.enable_w1tc = (1 << DP_PIN) | (1 << DM_PIN);  }
   #define SET_O { GPIO.enable_w1ts = (1 << DP_PIN) | (1 << DM_PIN);  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DM_PIN]);  }
   #define READ_BOTH_PINS (((GPIO.in&RD_MASK)<<8)>>RD_SHIFT)
@@ -114,7 +116,7 @@ static uint8_t _getCycleCount8d8(void)
     {&GPIO.out_w1tc,&GPIO.out_w1tc},
     {&GPIO.out_w1tc,&GPIO.out_w1tc}
   } ;
-#else
+#else // ESP32C3
   #define SET_I { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DM_PIN]);  gpio_ll_output_disable(&GPIO,DM_PIN); gpio_ll_output_disable(&GPIO,DP_PIN);}
   #define SET_O { GPIO.enable_w1ts.val = (1 << DP_PIN) | (1 << DM_PIN);  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DM_PIN]);  }
   #define READ_BOTH_PINS (((GPIO.in.val&RD_MASK)<<8)>>RD_SHIFT)
@@ -127,7 +129,7 @@ static uint8_t _getCycleCount8d8(void)
   } ;
 #endif
 
-//must be setup ech time with setPins
+//must be setup each time with setPins
 uint32_t DP_PIN;
 uint32_t DM_PIN;
 
@@ -137,7 +139,7 @@ uint16_t M_ONE;
 uint16_t P_ONE;
 uint32_t RD_MASK;
 uint32_t RD_SHIFT;
-//end must be setup ech time with setPins
+//end must be setup each time with setPins
 
 // temporary used insize lowlevel
 volatile uint8_t received_NRZI_buffer_bytesCnt;
@@ -157,38 +159,72 @@ uint8_t decoded_receive_buffer[DEF_BUFF_SIZE];
 
 
 void (*delay_pntA)() = NULL;
-#define cpuDelay(x) {(*delay_pntA)();}
 
 
-#if CONFIG_IDF_TARGET_ESP32
-  #define MAX_DELAY_CODE_SIZE 0x280
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
+
+  #if CONFIG_IDF_TARGET_ESP32
+    #define cpuDelay(x) {(*delay_pntA)();}
+    #define MAX_DELAY_CODE_SIZE 0x280
+    #define SDELAYMALLOC(X) malloc(X)
+    #define SDELAYREALLOC(X,Y,Z) heap_caps_realloc(X,Y,Z)
+    #define SDELAYRMASK MALLOC_CAP_EXEC
+
+    void makeOpcodes( uint8_t* ptr, uint8_t ticks )
+    {
+      printf("Making xtensa Opcodes for ESP32/ESP32S2\n");
+      //put head of delay procedure
+      *ptr++ = 0x36;
+      *ptr++ = 0x41;
+      *ptr++ = 0;
+      for(int k=0;k<ticks;k++) {
+        //put NOPs
+        *ptr++ = 0x3d;
+        *ptr++ = 0xf0;
+      }
+      //put tail of delay procedure
+      *ptr++ = 0x1d;
+      *ptr++ = 0xf0;
+      *ptr++ = 0x00;
+      *ptr++ = 0x00;
+    }
+
+
+  #else // ESP32S2
+
+
+    // Memory protection is disabled on Arduino IDE for ESP32-S2, so we'll used nop's in a loop, and lose precision :-(
+    #define NOP() asm volatile ("nop")
+    void IRAM_ATTR cpuDelay(uint32_t cycles_count )
+    {
+      if( cycles_count > 0 ) {
+        while( cycles_count-->1 ) NOP();
+      }
+    }
+
+    void makeOpcodes( uint8_t* ptr, uint8_t ticks )
+    {
+      // TODO: detect CONFIG_ESP_SYSTEM_MEMPROT_FEATURE and create opcodes
+    }
+
+
+    //#define WR_SIMULTA
+    #define MAX_DELAY_CODE_SIZE 0x280
+    #define SDELAYMALLOC(X) heap_caps_malloc(X,MALLOC_CAP_32BIT);
+    #define SDELAYREALLOC(X,Y,Z) heap_caps_realloc(X,Y,Z)
+    #define SDELAYRMASK MALLOC_CAP_EXEC
+  #endif
+
+
+#else // ESP32-C3
+  #define cpuDelay(x) {(*delay_pntA)();}
+  #define MAX_DELAY_CODE_SIZE 0x210
   #define SDELAYMALLOC(X) malloc(X)
   #define SDELAYREALLOC(X,Y,Z) heap_caps_realloc(X,Y,Z)
-  #define SDELAYRMASK MALLOC_CAP_EXEC
+  #define SDELAYRMASK MALLOC_CAP_32BIT|MALLOC_CAP_EXEC
   void makeOpcodes( uint8_t* ptr, uint8_t ticks )
   {
-    //put head of delay procedure
-    *ptr++ = 0x36;
-    *ptr++ = 0x41;
-    *ptr++ = 0;
-    for(int k=0;k<ticks;k++) {
-      //put NOPs
-      *ptr++ = 0x3d;
-      *ptr++ = 0xf0;
-    }
-    //put tail of delay procedure
-    *ptr++ = 0x1d;
-    *ptr++ = 0xf0;
-    *ptr++ = 0x00;
-    *ptr++ = 0x00;
-  }
-#else // ESP32-C3
-  #define MAX_DELAY_CODE_SIZE 0x210
-  #define SDELAYMALLOC(X) heap_caps_aligned_alloc(X,MAX_DELAY_CODE_SIZE, MALLOC_CAP_8BIT);
-  #define SDELAYREALLOC(X,Y,Z) heap_caps_realloc(X,Y,Z)
-  #define SDELAYRMASK MALLOC_CAP_32BIT | MALLOC_CAP_EXEC
-  void makeOpcodes( uint8_t* ptr, uint8_t ticks )
-  {
+    printf("Making RISCV Opcodes for ESP32C3\n");
     //put head of delay procedure
     for(int k=0;k<ticks;k++) {
       //put NOPs
@@ -203,20 +239,46 @@ void (*delay_pntA)() = NULL;
 
 
 
+
 void setDelay(uint8_t ticks)
 {
+  #if defined CONFIG_IDF_TARGET_ESP32S2
+    return;
+  #endif
   uint8_t* pntS;
+
+  printf("Setting delay to %d ticks\n", ticks);
+
+  size_t free_iram = heap_caps_get_free_size(MALLOC_CAP_EXEC);
+  printf("Free iram before alloc: %d\n", free_iram );
+
   // it can't execute but can read & write
   if(!delay_pntA) {
+    printf("Malloc MAX_DELAY_CODE_SIZE=%d\n", MAX_DELAY_CODE_SIZE );
     pntS = SDELAYMALLOC( MAX_DELAY_CODE_SIZE );
   } else {
+    printf("Realloc MAX_DELAY_CODE_SIZE=%d\n", MAX_DELAY_CODE_SIZE );
     pntS = SDELAYREALLOC( delay_pntA, MAX_DELAY_CODE_SIZE, MALLOC_CAP_8BIT );
   }
+
+  if(!pntS) {
+    printf("OOM!\nHalting...\n");
+    while(1) { vTaskDelay(1); }
+  }
+
   uint8_t* pnt = (uint8_t*)pntS;
   makeOpcodes( pnt, ticks );
-  // move it to executable memory segment
+  printf("moving opecodes to executable memory segment\n");
   // it can't  write  but can read & execute
+
+  free_iram = heap_caps_get_free_size(MALLOC_CAP_EXEC);
+  printf("Free iram after alloc and before realloc: %d\n", free_iram );
+
   delay_pntA = SDELAYREALLOC( pntS, MAX_DELAY_CODE_SIZE, SDELAYRMASK );
+
+  free_iram = heap_caps_get_free_size(MALLOC_CAP_EXEC);
+  printf("Free iram after realloc to cap_exec: %d\n", free_iram );
+
   if(!delay_pntA) {
     printf("idf.py menuconfig\n Component config-> ESP System Setting -> Memory protectiom-> Disable.\n memory prot must be disabled!!!\n delay_pntA = %p,\nHalting...\n",delay_pntA);
     while(1) { vTaskDelay(1); }
@@ -338,9 +400,6 @@ void parseImmed(sUsbContStruct * pcurrent)
   static int           sIntfCount   = 0;
   static int           hidCount   = 0;
   int                  pos = 0;
-  #define STDCLASS     0x00
-  #define HIDCLASS     0x03
-  #define HUBCLASS     0x09      /* bDeviceClass, bInterfaceClass */
 
   pcurrent->epCount     = 0;
 
@@ -660,10 +719,10 @@ void sendOnly()
   SET_O;
   #ifdef WR_SIMULTA
     uint32_t out_base = GPIO.out;
-    sndA[0] = (out_base | DP) &~DM;
-    sndA[1] = (out_base | DM) &~DP;
-    sndA[2] = (out_base )&~(DP | DM);
-    sndA[3] = out_base | (DM | DP);
+    sndA[0] = (out_base | DP_PIN_M) &~DM_PIN_M;
+    sndA[1] = (out_base | DM_PIN_M) &~DP_PIN_M;
+    sndA[2] = (out_base )&~(DP_PIN_M | DM_PIN_M);
+    sndA[3] =  out_base | (DM_PIN_M | DP_PIN_M);
   #endif
   for(k=0;k<transmit_NRZI_buffer_cnt;k++) {
     //usb_transmit_delay(10);
@@ -682,23 +741,23 @@ void sendOnly()
 
 void sendRecieveNParse()
 {
-  register uint32_t R3;
+  register uint32_t _R3;
   register uint16_t *STORE = received_NRZI_buffer;
   //__disable_irq();
   sendOnly();
-  register uint32_t R4;// = READ_BOTH_PINS;
+  register uint32_t _R4;// = READ_BOTH_PINS;
 
 START:
-  R4 = READ_BOTH_PINS;
-  *STORE = R4 | _getCycleCount8d8();
+  _R4 = READ_BOTH_PINS;
+  *STORE = _R4 | _getCycleCount8d8();
   STORE++;
-  R3 = R4;
-  //R4 = READ_BOTH_PINS;
-  //if(R4!=R3)  goto START;
-  if( R3 ) {
+  _R3 = _R4;
+  //_R4 = READ_BOTH_PINS;
+  //if(_R4!=_R3)  goto START;
+  if( _R3 ) {
     for(int k=0;k<TOUT;k++) {
-      R4   = READ_BOTH_PINS;
-      if(R4!=R3)  goto START;
+      _R4   = READ_BOTH_PINS;
+      if(_R4!=_R3)  goto START;
     }
   }
   //__enable_irq();
@@ -1296,10 +1355,18 @@ int checkPins(int dp,int dm)
 {
   int diff = abs(dp-dm);
   if(diff>7||diff==0) {
+    printf("Diff not in [1-7] range: %d\n", diff );
     return 0;
   }
-  if( dp<8 || dp>31) return 0;
-  if( dm<8 || dm>31) return 0;
+
+  if( dp<8 || dp>31) {
+    printf("Dp not in [8-31] range: [%d]\n", dp );
+    return 0;
+  }
+  if( dm<8 || dm>31) {
+    printf("Dm not in [8-31] range: [%d]\n", dp );
+    return 0;
+  }
 
   return 1;
 }
@@ -1428,7 +1495,7 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         TIME_MULT = (int)(TIME_SCALE/(out_config.freq_mhz/8/1.5)+0.5);
         printf("TIME_MULT = %d \n",TIME_MULT);
 
-        int     TRANSMIT_TIME_DELAY_OPT = 0;
+        int TRANSMIT_TIME_DELAY_OPT = 0;
         TRANSMIT_TIME_DELAY = TRANSMIT_TIME_DELAY_OPT;
         printf("D=%4d ",TRANSMIT_TIME_DELAY);
         setDelay(TRANSMIT_TIME_DELAY);
@@ -1451,7 +1518,7 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         }
         TRANSMIT_TIME_DELAY = TRANSMIT_TIME_DELAY_OPT+DELAY_CORR;
         setDelay(TRANSMIT_TIME_DELAY);
-        printf("TRANSMIT_TIME_DELAY = %d time = %f error = %f%% \n",TRANSMIT_TIME_DELAY,cS_opt,(cS_opt-OPT_TIME)/OPT_TIME*100);
+        printf("TRANSMIT_TIME_DELAY = %d time = %f error = %f%% \n", TRANSMIT_TIME_DELAY, cS_opt, (cS_opt-OPT_TIME)/OPT_TIME*100 );
       }
     } else {
       if( current->DP == -1 && current->DM == -1 ) {
@@ -1486,7 +1553,7 @@ uint8_t usbGetFlags(int _usb_num)
 
 void usb_process()
 {
-  #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
+  #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3 //|| defined ESP32S2 || defined CONFIG_IDF_TARGET_ESP32
     cpu_ll_enable_cycle_count();
   #endif
   for(int k=0;k<NUM_USB;k++) {
@@ -1553,9 +1620,6 @@ void printState()
     int sIntfCount   = 0;
     int hidCount   = 0;
     int pos = 0;
-    #define STDCLASS        0x00
-    #define HIDCLASS        0x03
-    #define HUBCLASS     0x09      // bDeviceClass, bInterfaceClass
     #ifdef DEBUG_ALL
       printf("clear epCount %d self = %d\n",pcurrent->epCount,pcurrent->selfNum);
     #endif

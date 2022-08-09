@@ -1,4 +1,4 @@
-
+#define DEBUG_ALL
 #include <ESP32-USBSoftHost.hpp>
 #include "usbkbd.h" // KeyboardReportParser
 
@@ -56,11 +56,23 @@
   #define DM_P0   8
   #define DP_P1  -1
   #define DM_P1  -1
+  #define DP_P2  -1
+  #define DM_P2  -1
+  #define DP_P3  -1
+  #define DM_P3  -1
+#elif CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S2
+  #define LOAD_TINYUSB
+  #define PROFILE_NAME "ESP32 S2 Dev module"
+  // [OK] 20/19 (USB RS/TS)
+  #define DP_P0  20 // ok
+  #define DM_P0  19 // ok
+  #define DP_P1  -1
   #define DM_P1  -1
   #define DP_P2  -1
   #define DM_P2  -1
   #define DP_P3  -1
   #define DM_P3  -1
+
 #else
   // default pins tested on ESP32-Wroom
   #define PROFILE_NAME "Default Wroom"
@@ -73,7 +85,6 @@
   #define DP_P3  13 // -1 to disable
   #define DM_P3  15 // -1 to disable
 #endif
-
 
 
 static void my_USB_DetectCB( uint8_t usbNum, void * dev )
@@ -119,14 +130,11 @@ usb_pins_config_t USB_Pins_Config =
 
 void setup()
 {
-
   Serial.begin(115200);
-  delay(200);
+  delay(5000);
   Serial.printf("USB Soft Host Test for %s\n", PROFILE_NAME );
-  delay(1000);
-
+  Serial.printf("TIMER_BASE_CLK: %d, TIMER_DIVIDER:%d, TIMER_SCALE: %d\n", TIMER_BASE_CLK, TIMER_DIVIDER, TIMER_SCALE );
   USH.init( USB_Pins_Config, my_USB_DetectCB, my_USB_PrintCB );
-
 }
 
 void loop()

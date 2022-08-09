@@ -1,0 +1,290 @@
+M5Stack Core ESP32
+
+12:41:28.386 -> USB Soft Host Test for M5Stack Gray                                  12:43:13.187 -> USB Soft Host Test for ESP32 S2 Dev module
+12:41:28.386 -> TIMER_BASE_CLK: 80000000, TIMER_DIVIDER:2, TIMER_SCALE: 40000000     12:43:13.187 -> TIMER_BASE_CLK: 80000000, TIMER_DIVIDER:2, TIMER_SCALE: 40000000
+12:41:29.414 -> Attaching onDetectCB                                                 12:43:14.181 -> Using core0
+12:41:29.414 -> Attaching onDataCB                                                   12:43:14.181 -> Attaching onDetectCB
+12:41:29.414 -> Attaching onUSBMessageDecode                                         12:43:14.181 -> Attaching onDataCB
+12:41:29.414 -> Attaching onTickCB                                                   12:43:14.181 -> Attaching onUSBMessageDecode
+12:41:29.414 -> Creating message queue                                               12:43:14.181 -> Attaching onTickCB
+12:41:29.414 -> Setting USB Delay                                                    12:43:14.181 -> Creating message queue
+12:41:29.414 -> Setting delay to 4 ticks                                             12:43:14.181 -> Setting USB Delay
+12:41:29.414 -> Free iram before alloc: 196540                                       12:43:14.181 -> Setting delay to 4 ticks
+12:41:29.414 -> Malloc MAX_DELAY_CODE_SIZE=640                                       12:43:14.181 -> Free iram before alloc: 221736
+12:41:29.414 -> Making xtensa Opcodes for ESP32/ESP32S2                              12:43:14.181 -> Malloc MAX_DELAY_CODE_SIZE=640
+12:41:29.447 -> moving opecodes to executable memory segment                         12:43:14.214 -> Making xtensa Opcodes for ESP32/ESP32S2
+12:41:29.447 -> Free iram after alloc and before realloc: 196540                     12:43:14.214 -> moving opecodes to executable memory segment
+12:41:29.447 -> Free iram after realloc: 195884                                      12:43:14.214 -> Free iram after alloc and before realloc: 221080
+12:41:29.447 -> Setting up pins                                                      12:43:14.214 -> Free iram after realloc: 221080
+12:41:29.447 -> USB#0 (pins 16 17) is OK!                                            12:43:14.214 -> Setting up pins
+12:41:29.447 -> READ_BOTH_PINS = 0000                                                12:43:14.214 -> USB#0 (pins 19 20) is OK!
+12:41:29.447 -> READ_BOTH_PINS = 0000                                                12:43:14.214 -> READ_BOTH_PINS = 0000
+12:41:29.447 -> READ_BOTH_PINS = 0000                                                12:43:14.214 -> READ_BOTH_PINS = 0000
+12:41:29.447 -> READ_BOTH_PINS = 0000                                                12:43:14.214 -> READ_BOTH_PINS = 0000
+12:41:29.447 -> cpu freq = 240 MHz                                                   12:43:14.214 -> READ_BOTH_PINS = 0000
+12:41:29.447 -> TIME_MULT = 51                                                       12:43:14.214 -> cpu freq = 240 MHz
+12:41:29.447 -> D=   0 Setting delay to 0 ticks                                      12:43:14.214 -> TIME_MULT = 51
+12:41:29.447 -> Free iram before alloc: 195884                                       12:43:14.248 -> D=   0 Setting delay to 0 ticks
+12:41:29.447 -> Realloc MAX_DELAY_CODE_SIZE=640                                      12:43:14.248 -> Free iram before alloc: 221080
+12:41:29.447 -> Making xtensa Opcodes for ESP32/ESP32S2                              12:43:14.248 -> Realloc MAX_DELAY_CODE_SIZE=640
+12:41:29.447 -> moving opecodes to executable memory segment                         12:43:14.248 -> Making xtensa Opcodes for ESP32/ESP32S2
+12:41:29.447 -> Free iram after alloc and before realloc: 196540                     12:43:14.248 -> moving opecodes to executable memory segment
+12:41:29.480 -> Free iram after realloc: 195884                                      12:43:14.248 -> Free iram after alloc and before realloc: 221080
+12:41:29.480 -> 4800 bits in 1252.000000 uSec 3.833866 MHz  6 ticks in 1.565000 uS   12:43:14.248 -> Free iram after realloc: 221080
+12:41:29.480 -> D= 127 Setting delay to 127 ticks                                    12:43:14.248 -> Guru Meditation Error: Core  0 panic'ed (Cache disabled but cached memory region accessed).
+12:41:29.480 -> Free iram before alloc: 195884                                       12:43:14.248 -> MMU entry fault error occurred while accessing the address 0x403c5810 (invalid mmu entry)
+12:41:29.480 -> Realloc MAX_DELAY_CODE_SIZE=640                                      12:43:14.383 ->
+12:41:29.480 -> Making xtensa Opcodes for ESP32/ESP32S2                              12:43:14.383 -> Core  0 register dump:
+12:41:29.513 -> moving opecodes to executable memory segment                         12:43:14.383 -> PC      : 0x40024340  PS      : 0x00060f34  A0      : 0x800829c0  A1      : 0x3ffff000
+12:41:29.513 -> Free iram after alloc and before realloc: 196540                     12:43:14.383 -> A2      : 0x3f004064  A3      : 0x00000000  A4      : 0x3f404000  A5      : 0x3ffc2e48
+12:41:29.513 -> Free iram after realloc: 195884                                      12:43:14.383 -> A6      : 0x3ffc1a48  A7      : 0x3ffc3084  A8      : 0x80081b54  A9      : 0x0e2
+12:41:29.513 -> 4800 bits in 3804.000000 uSec 1.261830 MHz  6 ticks in 4.755000 uS
+12:41:29.513 -> D=  63 Setting delay to 63 ticks
+12:41:29.513 -> Free iram before alloc: 195884
+12:41:29.513 -> Realloc MAX_DELAY_CODE_SIZE=640
+12:41:29.513 -> Making xtensa Opcodes for ESP32/ESP32S2
+12:41:29.513 -> moving opecodes to executable memory segment
+12:41:29.513 -> Free iram after alloc and before realloc: 196540
+12:41:29.513 -> Free iram after realloc: 195884
+12:41:29.513 -> 4800 bits in 2508.000000 uSec 1.913876 MHz  6 ticks in 3.135000 uS
+12:41:29.546 -> D=  95 Setting delay to 95 ticks
+12:41:29.546 -> Free iram before alloc: 195884
+12:41:29.546 -> Realloc MAX_DELAY_CODE_SIZE=640
+12:41:29.546 -> Making xtensa Opcodes for ESP32/ESP32S2
+12:41:29.546 -> moving opecodes to executable memory segment
+12:41:29.546 -> Free iram after alloc and before realloc: 196540
+12:41:29.579 -> Free iram after realloc: 195884
+12:41:29.579 -> 4800 bits in 3156.000000 uSec 1.520913 MHz  6 ticks in 3.945000 uS
+12:41:29.579 -> D= 111 Setting delay to 111 ticks
+12:41:29.579 -> Free iram before alloc: 195884
+12:41:29.579 -> Realloc MAX_DELAY_CODE_SIZE=640
+12:41:29.579 -> Making xtensa Opcodes for ESP32/ESP32S2
+12:41:29.579 -> moving opecodes to executable memory segment
+12:41:29.579 -> Free iram after alloc and before realloc: 196540
+12:41:29.579 -> Free iram after realloc: 195884
+12:41:29.579 -> 4800 bits in 3484.000000 uSec 1.377727 MHz  6 ticks in 4.355000 uS
+12:41:29.579 -> D= 103 Setting delay to 103 ticks
+12:41:29.579 -> Free iram before alloc: 195884
+12:41:29.659 -> Realloc MAX_DELAY_CODE_SIZE=640
+12:41:29.659 -> Making xtensa Opcodes for ESP32/ESP32S2
+12:41:29.659 -> moving opecodes to executable memory segment
+12:41:29.659 -> Free iram after alloc and before realloc: 196540
+12:41:29.659 -> Free iram after realloc: 195884
+12:41:29.659 -> 4800 bits in 3316.000000 uSec 1.447527 MHz  6 ticks in 4.145000 uS
+12:41:29.659 -> D=  99 Setting delay to 99 ticks
+12:41:29.659 -> Free iram before alloc: 195884
+12:41:29.659 -> Realloc MAX_DELAY_CODE_SIZE=640
+12:41:29.659 -> Making xtensa Opcodes for ESP32/ESP32S2
+12:41:29.659 -> moving opecodes to executable memory segment
+12:41:29.659 -> Free iram after alloc and before realloc: 196540
+12:41:29.659 -> Free iram after realloc: 195884
+12:41:29.659 -> 4800 bits in 3236.000000 uSec 1.483313 MHz  6 ticks in 4.045000 uS
+12:41:29.659 -> D=  97 Setting delay to 97 ticks
+12:41:29.659 -> Free iram before alloc: 195884
+12:41:29.659 -> Realloc MAX_DELAY_CODE_SIZE=640
+12:41:29.659 -> Making xtensa Opcodes for ESP32/ESP32S2
+12:41:29.659 -> moving opecodes to executable memory segment
+12:41:29.678 -> Free iram after alloc and before realloc: 196540
+12:41:29.678 -> Free iram after realloc: 195884
+12:41:29.678 -> 4800 bits in 3196.000000 uSec 1.501877 MHz  6 ticks in 3.995000 uS
+12:41:29.678 -> D=  98 Setting delay to 98 ticks
+12:41:29.678 -> Free iram before alloc: 195884
+12:41:29.712 -> Realloc MAX_DELAY_CODE_SIZE=640
+12:41:29.712 -> Making xtensa Opcodes for ESP32/ESP32S2
+12:41:29.712 -> moving opecodes to executable memory segment
+12:41:29.712 -> Free iram after alloc and before realloc: 196540
+12:41:29.712 -> Free iram after realloc: 195884
+12:41:29.712 -> 4800 bits in 3217.000000 uSec 1.492073 MHz  6 ticks in 4.021250 uS
+12:41:29.712 -> D=  97 Setting delay to 97 ticks
+12:41:29.712 -> Free iram before alloc: 195884
+12:41:29.712 -> Realloc MAX_DELAY_CODE_SIZE=640
+12:41:29.712 -> Making xtensa Opcodes for ESP32/ESP32S2
+12:41:29.712 -> moving opecodes to executable memory segment
+12:41:29.712 -> Free iram after alloc and before realloc: 196540
+12:41:29.712 -> Free iram after realloc: 195884
+12:41:29.745 -> 4800 bits in 3196.000000 uSec 1.501877 MHz  6 ticks in 3.995000 uS
+12:41:29.745 -> Setting delay to 99 ticks
+12:41:29.745 -> Free iram before alloc: 195884
+12:41:29.745 -> Realloc MAX_DELAY_CODE_SIZE=640
+12:41:29.745 -> Making xtensa Opcodes for ESP32/ESP32S2
+12:41:29.745 -> moving opecodes to executable memory segment
+12:41:29.778 -> Free iram after alloc and before realloc: 196540
+12:41:29.778 -> Free iram after realloc: 195884
+12:41:29.778 -> TRANSMIT_TIME_DELAY = 99 time = 3.995000 error = -0.125003%
+12:41:29.778 -> Diff not in [1-7] range: 0
+12:41:29.778 -> USB#1 is disabled by user configuration
+12:41:29.778 -> Diff not in [1-7] range: 0
+12:41:29.778 -> USB#2 is disabled by user configuration
+12:41:29.778 -> Diff not in [1-7] range: 0
+12:41:29.778 -> USB#3 is disabled by user configuration
+12:41:29.778 -> Seleting SCL (blink) Pin #22
+12:41:29.778 -> Creating timer config
+12:41:29.778 -> Init timer
+12:41:29.778 -> Enable interrupt
+12:41:29.778 -> Register ISR
+12:41:29.778 -> Start timer
+12:41:29.778 -> Attaching Timer Task
+12:41:29.778 -> USB Soft Host Group timer task is now running on core #1 with priority 5
+
+
+
+
+13:39:58.995 -> USB Soft Host Test for ESP32 S2 Dev module
+13:39:58.995 -> TIMER_BASE_CLK: 80000000, TIMER_DIVIDER:2, TIMER_SCALE: 40000000
+13:39:59.992 -> Testing capabilities allocator...
+13:39:59.992 -> Free 8bit-capable memory (start): 226860K, 32-bit capable memory 226860K
+13:40:00.026 -> Allocating 10K of 8-bit capable RAM
+13:40:00.026 -> --> 0x3ffc72c8
+13:40:00.026 -> Free 8bit-capable memory (both reduced): 216604K, 32-bit capable memory 216604K
+13:40:00.026 -> This platform has no 32-bit only capable RAM, jumping to next test
+13:40:00.026 -> Allocating impossible caps
+13:40:00.026 -> --> 0x0
+13:40:00.026 -> This platform has no IRAM-only so changeover will never occur, jumping to next test
+13:40:00.059 -> Test if allocating executable code still gives IRAM, even with dedicated IRAM region depleted
+13:40:00.059 -> --> 0x400372cc
+13:40:00.059 -> Done.
+13:40:00.059 -> heap_caps metadata test
+13:40:00.059 -> Heap summary for capabilities 0x00000004:
+13:40:00.059 ->   At 0x3ffc33c8 len 232504 free 221112 allocated 8436 min_free 210852
+13:40:00.059 ->     largest_free_block 212980 alloc_blocks 33 free_blocks 2 total_blocks 35
+13:40:00.059 ->   At 0x3fffc000 len 14864 free 0 allocated 11836 min_free 0
+13:40:00.092 ->     largest_free_block 0 alloc_blocks 38 free_blocks 0 total_blocks 38
+13:40:00.092 ->   At 0x3ff9e000 len 8176 free 5748 allocated 0 min_free 5748
+13:40:00.092 ->     largest_free_block 5620 alloc_blocks 0 free_blocks 1 total_blocks 1
+13:40:00.092 ->   Totals:
+13:40:00.092 ->     free 226860 allocated 20272 min_free 216600 largest_free_block 212980
+13:40:00.092 -> After allocating 212980 bytes:
+13:40:00.092 -> Heap summary for capabilities 0x00000004:
+13:40:00.125 ->   At 0x3ffc33c8 len 232504 free 8116 allocated 221416 min_free 8116
+13:40:00.125 ->     largest_free_block 4596 alloc_blocks 34 free_blocks 2 total_blocks 36
+13:40:00.125 ->   At 0x3fffc000 len 14864 free 0 allocated 11836 min_free 0
+13:40:00.125 ->     largest_free_block 0 alloc_blocks 38 free_blocks 0 total_blocks 38
+13:40:00.125 ->   At 0x3ff9e000 len 8176 free 5748 allocated 0 min_free 5748
+13:40:00.158 ->     largest_free_block 5620 alloc_blocks 0 free_blocks 1 total_blocks 1
+13:40:00.158 ->   Totals:
+13:40:00.158 ->     free 13864 allocated 233252 min_free 13864 largest_free_block 5620
+13:40:00.158 ->
+13:40:00.158 ->
+13:40:00.158 ->  After test, heap status:
+13:40:00.158 -> Heap summary for capabilities 0x00000004:
+13:40:00.158 ->   At 0x3ffc33c8 len 232504 free 221112 allocated 8436 min_free 8116
+13:40:00.158 ->     largest_free_block 212980 alloc_blocks 33 free_blocks 2 total_blocks 35
+13:40:00.191 ->   At 0x3fffc000 len 14864 free 0 allocated 11836 min_free 0
+13:40:00.191 ->     largest_free_block 0 alloc_blocks 38 free_blocks 0 total_blocks 38
+13:40:00.191 ->   At 0x3ff9e000 len 8176 free 5748 allocated 0 min_free 5748
+13:40:00.191 ->     largest_free_block 5620 alloc_blocks 0 free_blocks 1 total_blocks 1
+13:40:00.191 ->   Totals:
+13:40:00.191 ->     free 226860 allocated 20272 min_free 13864 largest_free_block 212980
+13:40:00.191 -> heap_caps_malloc was called but failed to allocate 134217728 bytes with 0x1000 capabilities.
+13:40:00.191 -> heap_caps_realloc was called but failed to allocate 134217728 bytes with 0x1000 capabilities.
+13:40:00.191 -> heap_caps_aligned_alloc was called but failed to allocate 134217728 bytes with 0x1000 capabilities.
+13:40:00.224 -> heap_caps_malloc was called but failed to allocate 64 bytes with 0x80000000 capabilities.
+13:40:00.224 -> heap_caps_realloc was called but failed to allocate 64 bytes with 0x80000000 capabilities.
+13:40:00.224 -> heap_caps_aligned_alloc was called but failed to allocate 64 bytes with 0x80000000 capabilities.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
