@@ -27,7 +27,7 @@ Hardware support
 
 This library has been tested on ESP32-Wroom/Wrover and works fine as long as the pins aren't
 shared (beware of the psram pins!).
-It remains untested (but useless) on ESP32-S2, and can't compile (yet?) on ESP32-C3.
+It has partial support for ESP32-S2, and remains untested on ESP32-S3 && ESP32-C3.
 
 
 Known working HID devices:
