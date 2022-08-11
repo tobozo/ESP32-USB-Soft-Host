@@ -20,12 +20,6 @@
   #warning "Using software group timers"
 #endif
 
-#if defined CONFIG_ESP_SYSTEM_MEMPROT_FEATURE && !defined CONFIG_IDF_TARGET_ESP32S2
-  #error "memory prot must be disabled!!!"
-#endif
-
-
-
 #define TIMER_DIVIDER         2  //  Hardware timer clock divider
 #define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
 #define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
@@ -40,24 +34,23 @@
 #define HIDCLASS     0x03
 #define HUBCLASS     0x09      /* bDeviceClass, bInterfaceClass */
 
-
 void IRAM_ATTR printState();
 void IRAM_ATTR usb_process();
-typedef void (*onusbmesscb_t)(uint8_t src,uint8_t len,uint8_t *data);
+typedef void (*onusbmesscb_t)( uint8_t src,uint8_t len,uint8_t *data );
 void set_usb_mess_cb( onusbmesscb_t onUSBMessCb );
-typedef void (*printcb_t)(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len);
+typedef void (*printcb_t)( uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len );
 void set_print_cb( printcb_t onDataCB );
-typedef void (*ondetectcb_t)(uint8_t usbNum, void *device);
+typedef void (*ondetectcb_t)( uint8_t usbNum, void *device );
 void set_ondetect_cb( ondetectcb_t onDetectCB );
-typedef void(*onledblinkcb_t)(int on_off);
+typedef void(*onledblinkcb_t)( int on_off );
 void set_onled_blink_cb( onledblinkcb_t cb );
 
 
 
-void initStates( int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3);
-void setDelay(uint8_t ticks);
+void initStates( int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3 );
+void setCPUDelay( uint8_t ticks );
 uint8_t usbGetFlags(int _usb_num);
-void usbSetFlags(int _usb_num,uint8_t flags);
+void usbSetFlags( int _usb_num,uint8_t flags );
 
 
 typedef struct

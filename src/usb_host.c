@@ -35,6 +35,7 @@
      - Added callbacks (data and device detection)
    Changes by tobozo (aug 2022):
      - Quick & dirty cpuDelay() to enable ESP32-S2 support when CONFIG_ESP_SYSTEM_MEMPROT_FEATURE is enabled (default on Arduino IDE)
+     - Some reformatting and refactoring
 
 \*/
 
@@ -158,20 +159,38 @@ uint8_t decoded_receive_buffer[DEF_BUFF_SIZE];
 // end temporary used insize lowlevel
 
 
-void (*delay_pntA)() = NULL;
+void (*cpuDelay)() = NULL;
 
 
-#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
+#if defined CONFIG_ESP_SYSTEM_MEMPROT_FEATURE || defined FORCE_TEMPLATED_NOPS
+  // memory protection enabled, MALLOC_CAP_EXEC can't be used
+  // use c++ templated nop() instead (see nops.hpp)
+  typedef void (*CpuDelay_t)();
+  extern CpuDelay_t nops[256];
+  void setCPUDelay(uint8_t ticks)
+  {
+    cpuDelay = nops[ticks];
+  }
 
-  #if CONFIG_IDF_TARGET_ESP32
-    #define cpuDelay(x) {(*delay_pntA)();}
+#else // memprot disabled, make use of MALLOC_CAP_EXEC
+
+  #if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
     #define MAX_DELAY_CODE_SIZE 0x280
     #define SDELAYMALLOC(X) malloc(X)
     #define SDELAYREALLOC(X,Y,Z) heap_caps_realloc(X,Y,Z)
     #define SDELAYRMASK MALLOC_CAP_EXEC
+  #elif CONFIG_IDF_TARGET_ESP32C3
+    #define MAX_DELAY_CODE_SIZE 0x210
+    #define SDELAYMALLOC(X) malloc(X)
+    #define SDELAYREALLOC(X,Y,Z) heap_caps_realloc(X,Y,Z)
+    #define SDELAYRMASK MALLOC_CAP_32BIT|MALLOC_CAP_EXEC
+  #else
+    #error "Unsupported target"
+  #endif
 
-    void makeOpcodes( uint8_t* ptr, uint8_t ticks )
-    {
+  void makeOpcodes( uint8_t* ptr, uint8_t ticks )
+  {
+    #if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
       printf("Making xtensa Opcodes for ESP32/ESP32S2\n");
       //put head of delay procedure
       *ptr++ = 0x36;
@@ -187,103 +206,65 @@ void (*delay_pntA)() = NULL;
       *ptr++ = 0xf0;
       *ptr++ = 0x00;
       *ptr++ = 0x00;
-    }
-
-
-  #else // ESP32S2
-
-
-    // Memory protection is disabled on Arduino IDE for ESP32-S2, so we'll used nop's in a loop, and lose precision :-(
-    #define NOP() asm volatile ("nop")
-    void IRAM_ATTR cpuDelay(uint32_t cycles_count )
-    {
-      if( cycles_count > 0 ) {
-        while( cycles_count-->1 ) NOP();
+    #elif CONFIG_IDF_TARGET_ESP32C3
+      printf("Making RISCV Opcodes for ESP32C3\n");
+      //put head of delay procedure
+      for(int k=0;k<ticks;k++) {
+        //put NOPs
+        *ptr++ = 0x1;
+        *ptr++ = 0x0;
       }
-    }
+      //put tail of delay procedure
+      *ptr++ = 0x82;
+      *ptr++ = 0x80;
+    #else
+     #error "Unsupported target"
+    #endif
+  }
 
-    void makeOpcodes( uint8_t* ptr, uint8_t ticks )
-    {
-      // TODO: detect CONFIG_ESP_SYSTEM_MEMPROT_FEATURE and create opcodes
-    }
-
-
-    //#define WR_SIMULTA
-    #define MAX_DELAY_CODE_SIZE 0x280
-    #define SDELAYMALLOC(X) heap_caps_malloc(X,MALLOC_CAP_32BIT);
-    #define SDELAYREALLOC(X,Y,Z) heap_caps_realloc(X,Y,Z)
-    #define SDELAYRMASK MALLOC_CAP_EXEC
-  #endif
-
-
-#else // ESP32-C3
-  #define cpuDelay(x) {(*delay_pntA)();}
-  #define MAX_DELAY_CODE_SIZE 0x210
-  #define SDELAYMALLOC(X) malloc(X)
-  #define SDELAYREALLOC(X,Y,Z) heap_caps_realloc(X,Y,Z)
-  #define SDELAYRMASK MALLOC_CAP_32BIT|MALLOC_CAP_EXEC
-  void makeOpcodes( uint8_t* ptr, uint8_t ticks )
+  void setCPUDelay(uint8_t ticks)
   {
-    printf("Making RISCV Opcodes for ESP32C3\n");
-    //put head of delay procedure
-    for(int k=0;k<ticks;k++) {
-      //put NOPs
-      *ptr++ = 0x1;
-      *ptr++ = 0x0;
+    uint8_t* pntS;
+
+    printf("Setting delay to %d ticks\n", ticks);
+
+    size_t free_iram = heap_caps_get_free_size(MALLOC_CAP_EXEC);
+    printf("Free iram before alloc: %d\n", free_iram );
+
+    // it can't execute but can read & write
+    if(!cpuDelay) {
+      printf("Malloc MAX_DELAY_CODE_SIZE=%d\n", MAX_DELAY_CODE_SIZE );
+      pntS = SDELAYMALLOC( MAX_DELAY_CODE_SIZE );
+    } else {
+      printf("Realloc MAX_DELAY_CODE_SIZE=%d\n", MAX_DELAY_CODE_SIZE );
+      pntS = SDELAYREALLOC( cpuDelay, MAX_DELAY_CODE_SIZE, MALLOC_CAP_8BIT );
     }
-    //put tail of delay procedure
-    *ptr++ = 0x82;
-    *ptr++ = 0x80;
+
+    if(!pntS) {
+      printf("OOM!\nHalting...\n");
+      while(1) { vTaskDelay(1); }
+    }
+
+    uint8_t* pnt = (uint8_t*)pntS;
+    makeOpcodes( pnt, ticks );
+    printf("moving opecodes to executable memory segment\n");
+    // it can't  write  but can read & execute
+
+    free_iram = heap_caps_get_free_size(MALLOC_CAP_EXEC);
+    printf("Free iram after alloc and before realloc: %d\n", free_iram );
+
+    cpuDelay = SDELAYREALLOC( pntS, MAX_DELAY_CODE_SIZE, SDELAYRMASK );
+
+    free_iram = heap_caps_get_free_size(MALLOC_CAP_EXEC);
+    printf("Free iram after realloc to cap_exec: %d\n", free_iram );
+
+    if(!cpuDelay) {
+      printf("idf.py menuconfig\n Component config-> ESP System Setting -> Memory protectiom-> Disable.\n memory prot must be disabled!!!\n cpuDelay = %p,\nHalting...\n",cpuDelay);
+      while(1) { vTaskDelay(1); }
+    }
   }
+
 #endif
-
-
-
-
-void setDelay(uint8_t ticks)
-{
-  #if defined CONFIG_IDF_TARGET_ESP32S2
-    return;
-  #endif
-  uint8_t* pntS;
-
-  printf("Setting delay to %d ticks\n", ticks);
-
-  size_t free_iram = heap_caps_get_free_size(MALLOC_CAP_EXEC);
-  printf("Free iram before alloc: %d\n", free_iram );
-
-  // it can't execute but can read & write
-  if(!delay_pntA) {
-    printf("Malloc MAX_DELAY_CODE_SIZE=%d\n", MAX_DELAY_CODE_SIZE );
-    pntS = SDELAYMALLOC( MAX_DELAY_CODE_SIZE );
-  } else {
-    printf("Realloc MAX_DELAY_CODE_SIZE=%d\n", MAX_DELAY_CODE_SIZE );
-    pntS = SDELAYREALLOC( delay_pntA, MAX_DELAY_CODE_SIZE, MALLOC_CAP_8BIT );
-  }
-
-  if(!pntS) {
-    printf("OOM!\nHalting...\n");
-    while(1) { vTaskDelay(1); }
-  }
-
-  uint8_t* pnt = (uint8_t*)pntS;
-  makeOpcodes( pnt, ticks );
-  printf("moving opecodes to executable memory segment\n");
-  // it can't  write  but can read & execute
-
-  free_iram = heap_caps_get_free_size(MALLOC_CAP_EXEC);
-  printf("Free iram after alloc and before realloc: %d\n", free_iram );
-
-  delay_pntA = SDELAYREALLOC( pntS, MAX_DELAY_CODE_SIZE, SDELAYRMASK );
-
-  free_iram = heap_caps_get_free_size(MALLOC_CAP_EXEC);
-  printf("Free iram after realloc to cap_exec: %d\n", free_iram );
-
-  if(!delay_pntA) {
-    printf("idf.py menuconfig\n Component config-> ESP System Setting -> Memory protectiom-> Disable.\n memory prot must be disabled!!!\n delay_pntA = %p,\nHalting...\n",delay_pntA);
-    while(1) { vTaskDelay(1); }
-  }
-}
 
 
 
@@ -726,7 +707,7 @@ void sendOnly()
   #endif
   for(k=0;k<transmit_NRZI_buffer_cnt;k++) {
     //usb_transmit_delay(10);
-    cpuDelay(TRANSMIT_TIME_DELAY);
+    cpuDelay();
     #ifdef WR_SIMULTA
       GPIO.out = sndA[transmit_NRZI_buffer[k]];
     #else
@@ -1383,8 +1364,8 @@ int64_t get_system_time_us()
 float testDelay6(float freq_MHz)
 {
   // 6 bits must take 4.0 uSec
-  #define SEND_BITS  120
-  #define REPS 40
+  #define SEND_BITS 120
+  #define REPS      40
   float res = 1;
   transmit_NRZI_buffer_cnt = 0;
 
@@ -1392,7 +1373,6 @@ float testDelay6(float freq_MHz)
     transmit_NRZI_buffer[transmit_NRZI_buffer_cnt++] = USB_LS_K;
     transmit_NRZI_buffer[transmit_NRZI_buffer_cnt++] = USB_LS_J;
   }
-
 
   int64_t stimb = get_system_time_us();
   for(int k=0;k<REPS;k++) {
@@ -1411,6 +1391,20 @@ float testDelay6(float freq_MHz)
 uint8_t arr[0x200];
 
 
+
+void setupGPIO( int pin )
+{
+  gpio_pad_select_gpio( pin );
+  gpio_set_direction( pin , GPIO_MODE_OUTPUT);
+  gpio_set_level( pin , 0);
+  gpio_set_direction( pin , GPIO_MODE_INPUT);
+  gpio_pulldown_en( pin );
+}
+
+
+
+
+
 void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
 {
   decoded_receive_buffer_head = 0;
@@ -1420,7 +1414,9 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
   int calibrated = 0;
 
   for(int k=0;k<NUM_USB;k++) {
+
     current = &current_usb[k];
+
     if(k==0) {
       current->DP = DP0;
       current->DM = DM0;
@@ -1434,33 +1430,30 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
       current->DP = DP3;
       current->DM = DM3;
     }
-    current->isValid = 0;
-    if(checkPins(current->DP,current->DM)) {
-      printf("USB#%d (pins %d %d) is OK!\n", k, current->DP, current->DM );
-      current->selfNum = k;
-      current->flags_new  = 0x0;
-      current->flags 		= 0x0;
-      current->in_data_flip_flop       = 0;
-      current->bComplete  = 1;
-      current->cmdTimeOut = 0;
-      current->ufPrintDesc =0;
-      current->cb_Cmd     = CB_CHECK;
-      current->fsm_state  = 0;
-      current->wires_last_state = 0;
-      current->counterNAck = 0;
-      current->counterAck = 0;
-      current->epCount = 0;
-      gpio_pad_select_gpio(current->DP);
-      gpio_set_direction(current->DP, GPIO_MODE_OUTPUT);
-      gpio_set_level(current->DP, 0);
-      gpio_set_direction(current->DP, GPIO_MODE_INPUT);
-      gpio_pulldown_en(current->DP);
 
-      gpio_pad_select_gpio(current->DM);
-      gpio_set_direction(current->DM, GPIO_MODE_OUTPUT);
-      gpio_set_level(current->DM, 0);
-      gpio_set_direction(current->DM, GPIO_MODE_INPUT);
-      gpio_pulldown_en(current->DM);
+    current->isValid = 0;
+
+    if(checkPins(current->DP,current->DM)) {
+
+      printf("USB#%d (pins %d %d) is OK!\n", k, current->DP, current->DM );
+
+      current->selfNum           = k;
+      current->flags_new         = 0x0;
+      current->flags 		         = 0x0;
+      current->in_data_flip_flop = 0;
+      current->bComplete         = 1;
+      current->cmdTimeOut        = 0;
+      current->ufPrintDesc       = 0;
+      current->cb_Cmd            = CB_CHECK;
+      current->fsm_state         = 0;
+      current->wires_last_state  = 0;
+      current->counterNAck       = 0;
+      current->counterAck        = 0;
+      current->epCount           = 0;
+
+      setupGPIO( current->DP );
+      setupGPIO( current->DM );
+
       current->isValid = 1;
 
       // TEST
@@ -1492,39 +1485,40 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         TM_OUT = out_config.freq_mhz/2;
 
         // 8  - func divided clock to 8, 1.5 - MHz USB LS
-        TIME_MULT = (int)(TIME_SCALE/(out_config.freq_mhz/8/1.5)+0.5);
+        TIME_MULT = (int)( TIME_SCALE / ( out_config.freq_mhz/8/1.5 ) + 0.5 );
         printf("TIME_MULT = %d \n",TIME_MULT);
 
         int TRANSMIT_TIME_DELAY_OPT = 0;
         TRANSMIT_TIME_DELAY = TRANSMIT_TIME_DELAY_OPT;
-        printf("D=%4d ",TRANSMIT_TIME_DELAY);
-        setDelay(TRANSMIT_TIME_DELAY);
-        float  cS_opt = testDelay6(out_config.freq_mhz);
+        printf( "D=%4d ", TRANSMIT_TIME_DELAY );
+        setCPUDelay( TRANSMIT_TIME_DELAY );
+        float  cS_opt = testDelay6( out_config.freq_mhz );
+
         #define OPT_TIME (4.00f)
-        for(int p=0;p<9;p++) {
+        for( int p=0;p<9;p++ ) {
           TRANSMIT_TIME_DELAY = (uTime+dTime)/2;
-          printf("D=%4d ",TRANSMIT_TIME_DELAY);
-          setDelay(TRANSMIT_TIME_DELAY);
-          float cS = testDelay6(out_config.freq_mhz);
-          if(fabsf(OPT_TIME-cS)<fabsf(OPT_TIME-cS_opt)) {
+          printf( "D=%4d ", TRANSMIT_TIME_DELAY );
+          setCPUDelay( TRANSMIT_TIME_DELAY );
+          float cS = testDelay6( out_config.freq_mhz );
+          if( fabsf( OPT_TIME-cS )< fabsf( OPT_TIME-cS_opt ) ) {
             cS_opt = cS;
             TRANSMIT_TIME_DELAY_OPT = TRANSMIT_TIME_DELAY;
           }
-          if(cS<OPT_TIME) {
+          if( cS<OPT_TIME ) {
             dTime = TRANSMIT_TIME_DELAY;
           } else {
             uTime = TRANSMIT_TIME_DELAY;
           }
         }
         TRANSMIT_TIME_DELAY = TRANSMIT_TIME_DELAY_OPT+DELAY_CORR;
-        setDelay(TRANSMIT_TIME_DELAY);
-        printf("TRANSMIT_TIME_DELAY = %d time = %f error = %f%% \n", TRANSMIT_TIME_DELAY, cS_opt, (cS_opt-OPT_TIME)/OPT_TIME*100 );
+        setCPUDelay( TRANSMIT_TIME_DELAY );
+        printf( "TRANSMIT_TIME_DELAY = %d time = %f error = %f%% \n", TRANSMIT_TIME_DELAY, cS_opt, (cS_opt-OPT_TIME)/OPT_TIME*100 );
       }
     } else {
       if( current->DP == -1 && current->DM == -1 ) {
-        printf("USB#%d is disabled by user configuration\n", k);
+        printf( "USB#%d is disabled by user configuration\n", k );
       } else {
-        printf("USB#%d (pins %d %d) has errors and will be disabled !\n", k, current->DP, current->DM );
+        printf( "USB#%d (pins %d %d) has errors and will be disabled !\n", k, current->DP, current->DM );
       }
     }
   }
@@ -1553,7 +1547,7 @@ uint8_t usbGetFlags(int _usb_num)
 
 void usb_process()
 {
-  #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3 //|| defined ESP32S2 || defined CONFIG_IDF_TARGET_ESP32
+  #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
     cpu_ll_enable_cycle_count();
   #endif
   for(int k=0;k<NUM_USB;k++) {

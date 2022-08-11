@@ -7,7 +7,7 @@ What is it?
 This is mainly a wrapper around the excellent work of [Dmitry Samsonov (@sdima1357)](https://github.com/sdima1357)
 with [esp32_usb_soft_host](https://github.com/sdima1357/esp32_usb_soft_host)
 
-Some parts of the code (e.g. the timer group isr calls) have been regressed to fit esp-idf 3.3 needs.
+Some parts of the code (e.g. the timer group isr calls) have been regressed to fit esp-idf 3.3 needs but it has been tested up to 4.4.2.
 
 USB Low Speed is slow
 ---------------------
@@ -27,6 +27,7 @@ Hardware support
 
 This library has been tested on ESP32-Wroom/Wrover and works fine as long as the pins aren't
 shared (beware of the psram pins!).
+
 It has partial support for ESP32-S2, and remains untested on ESP32-S3 && ESP32-C3.
 
 
@@ -50,7 +51,6 @@ Known working HID devices:
   - Exegate SH-9018: Data recieves - 0/10, led fired - 10/10. Device reaction looks like Oklick-305m
 
 
-
 | Status    | Brand         | Model Name       | idVendor  |  idProduct | Init  | Events |              Comments                  |
 |:--------- | :------------ | :--------------- |:--------- | :--------- | :-----| :----- | :------------------------------------- |
 |:smile:    | LogiLink      | ID0062           | 0x1a2c    | 0x0042     | 10/10 | 10/10  | Low cost 3 buttons mouse               |
@@ -65,6 +65,12 @@ Known working HID devices:
 |:skull:    | Oklick        | 305m             | n/a       | n/a        | 10/10 | 0/10   |                                        |
 |:skull:    | Exegate       | SH-9018          | n/a       | n/a        | 10/10 | 0/10   | Device reaction looks like Oklick-305m |
 |:skull:    | A4Tech        | X-7???           | 0x09da    | 0x8090     | 0/10  | 0/10   | Gaming mouse w/o label                 |
+
+
+- USB Joypads:
+  - Quimat QR206 SNES PC Retro Gaming Controller
+  - Retrolink USB Classic Super NES Style Controller
+  - USB Game Controller (NES Style, unknown brand)
 
 
 

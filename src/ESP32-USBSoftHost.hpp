@@ -11,6 +11,11 @@
   #endif
 #endif
 
+#if defined CONFIG_ESP_SYSTEM_MEMPROT_FEATURE || defined FORCE_TEMPLATED_NOPS
+  #pragma message "memory protection features disabled, templated asm nop() will be used"
+  #include "nops.hpp"
+#endif
+
 
 // include the modified version from Dmitry Samsonov
 extern "C" {
@@ -145,6 +150,7 @@ class USB_SOFT_HOST
     void setActivityBlinker( onledblinkcb_t onActivityCB );
     void setTaskPriority( uint8_t p ) { priority = p; };
     void setTaskCore( uint8_t c ) { core = c; }
+    void setBlinkPin( gpio_num_t pin_number );
     // use those to avoid the pesky "Guru Meditation Error: Core 1 panic'ed (Cache disabled but cached memory region accessed)" error
     // may happen when using SPIFFS, SD or other IRAM driven libraries
     void TimerPause();
@@ -156,6 +162,7 @@ class USB_SOFT_HOST
     bool paused = false;
     uint8_t priority = 5;
     uint8_t core = 1;
+    gpio_num_t blink_gpio = (gpio_num_t)BLINK_GPIO;
     bool _init( usb_pins_config_t pconf );
     void setUSBMessageCb( onusbmesscb_t onMessageCB );
     static void onUSBMessageDecode(uint8_t src, uint8_t len, uint8_t *data);
@@ -186,6 +193,12 @@ bool USB_SOFT_HOST::init( usb_pins_config_t pconf, ondetectcb_t onDetectCB, prin
 }
 
 
+void USB_SOFT_HOST::setBlinkPin( gpio_num_t pin_number )
+{
+  blink_gpio = pin_number;
+}
+
+
 
 bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
 {
@@ -202,7 +215,7 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
 
   Serial.println("Setting USB Delay");
 
-  setDelay(4);
+  setCPUDelay(4);
 
   Serial.println("Setting up pins");
 
@@ -213,10 +226,10 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
     (gpio_num_t)pconf.dp3, (gpio_num_t)pconf.dm3
   );
 
-  Serial.printf("Seleting SCL (blink) Pin #%d\n", BLINK_GPIO);
+  Serial.printf("Seleting SCL (blink) Pin #%d\n", blink_gpio );
 
-  gpio_pad_select_gpio((gpio_num_t)BLINK_GPIO);
-  gpio_set_direction((gpio_num_t)BLINK_GPIO, GPIO_MODE_OUTPUT);
+  gpio_pad_select_gpio( blink_gpio );
+  gpio_set_direction( blink_gpio, GPIO_MODE_OUTPUT);
 
   Serial.println("Creating timer config");
 
