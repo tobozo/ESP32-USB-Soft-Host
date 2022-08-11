@@ -1,6 +1,6 @@
 #define DEBUG_ALL
 #define FORCE_TEMPLATED_NOPS
-#include <ESP32-USBSoftHost.hpp>
+#include <ESP32-USB-Soft-Host.h>
 #include "usbkbd.h" // KeyboardReportParser
 
 
