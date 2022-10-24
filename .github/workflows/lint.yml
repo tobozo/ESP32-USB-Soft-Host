@@ -1,0 +1,31 @@
+name: Lint
+
+on:
+  push:
+    paths:
+    - '**.ino'
+    - '**.ini'
+    - '**.cpp'
+    - '**.hpp'
+    - '**.h'
+    - '**.c'
+    - '**lint.yml'
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+jobs:
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: arduino/arduino-lint-action@v1
+        with:
+          project-type: library
+          library-manager: false
+          recursive: true
+
