@@ -99,13 +99,13 @@ class KeyboardReportParser
     {
       switch(key) {
         case UHS_HID_BOOT_KEY_NUM_LOCK:
-          bmNumLock = ~bmNumLock;
+          bmNumLock = !bmNumLock;
         break;
         case UHS_HID_BOOT_KEY_CAPS_LOCK:
-          bmCapsLock = ~bmCapsLock;
+          bmCapsLock = !bmCapsLock;
         break;
         case UHS_HID_BOOT_KEY_SCROLL_LOCK:
-          bmScrollLock = ~bmScrollLock;
+          bmScrollLock = !bmScrollLock;
         break;
       }
       return 0;
