@@ -7,9 +7,7 @@
 #include <sys/time.h>
 #include <string.h>
 
-#include "driver/gpio.h"
 #include "sdkconfig.h"
-#include "driver/timer.h"
 #include "soc/soc.h"
 #include "soc/rtc.h"
 #include "math.h"

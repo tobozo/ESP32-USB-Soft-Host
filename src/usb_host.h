@@ -7,6 +7,7 @@
 #include "soc/timer_group_struct.h"
 #include "driver/periph_ctrl.h"
 #include "driver/timer.h"
+#include "driver/gpio.h"
 #include "esp32-hal-log.h"
 
 #if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_DEBUG
