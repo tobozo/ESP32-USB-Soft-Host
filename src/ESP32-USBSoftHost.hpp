@@ -79,6 +79,7 @@ class USB_SOFT_HOST
     void setTaskPriority( uint8_t p ) { priority = p; };
     void setTaskCore( uint8_t c ) { core = c; }
     void setBlinkPin( gpio_num_t pin_number );
+    void setISRAllocFlag( int alloc_flags );
     // use those to avoid the pesky "Guru Meditation Error: Core 1 panic'ed (Cache disabled but cached memory region accessed)" error
     // may happen when using SPIFFS, SD or other IRAM driven libraries
     void TimerPause();
@@ -89,6 +90,7 @@ class USB_SOFT_HOST
     bool paused = false;
     uint8_t priority = 5;
     uint8_t core = 1;
+    int intr_alloc_flags = ESP_INTR_FLAG_IRAM;
     gpio_num_t blink_gpio = (gpio_num_t)BLINK_GPIO;
     bool _init( usb_pins_config_t pconf );
     void setUSBMessageCb( onusbmesscb_t onMessageCB );

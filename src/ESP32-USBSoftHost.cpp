@@ -128,6 +128,22 @@ void USB_SOFT_HOST::setBlinkPin( gpio_num_t pin_number )
 }
 
 
+void USB_SOFT_HOST::setISRAllocFlag( int alloc_flags )
+{
+  // ESP_INTR_FLAG_LEVEL1        < Accept a Level 1 interrupt vector (lowest priority)
+  // ESP_INTR_FLAG_LEVEL2        < Accept a Level 2 interrupt vector
+  // ESP_INTR_FLAG_LEVEL3        < Accept a Level 3 interrupt vector
+  // ESP_INTR_FLAG_LEVEL4        < Accept a Level 4 interrupt vector
+  // ESP_INTR_FLAG_LEVEL5        < Accept a Level 5 interrupt vector
+  // ESP_INTR_FLAG_LEVEL6        < Accept a Level 6 interrupt vector
+  // ESP_INTR_FLAG_NMI           < Accept a Level 7 interrupt vector (highest priority)
+  // ESP_INTR_FLAG_SHARED        < Interrupt can be shared between ISRs
+  // ESP_INTR_FLAG_EDGE          < Edge-triggered interrupt
+  // ESP_INTR_FLAG_IRAM          < ISR can be called if cache is disabled
+  // ESP_INTR_FLAG_INTRDISABLED  < Return with this interrupt disabled
+  intr_alloc_flags = alloc_flags;
+}
+
 
 bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
 {
@@ -186,8 +202,6 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
     #error "Invalid board"
   #endif
 
-
-
   Serial.println("Init timer");
   timer_init(TIMER_GROUP_0, TIMER_0, &config);
   timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x00000000ULL);
@@ -195,7 +209,7 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
   Serial.println("Enable interrupt");
   timer_enable_intr(TIMER_GROUP_0, TIMER_0);
   Serial.println("Register ISR");
-  timer_isr_register(TIMER_GROUP_0, TIMER_0, timer_group0_isr, (void *) TIMER_0, ESP_INTR_FLAG_IRAM, NULL);
+  timer_isr_register(TIMER_GROUP_0, TIMER_0, timer_group0_isr, (void *) TIMER_0, intr_alloc_flags, NULL);
   Serial.println("Start timer");
   timer_start(TIMER_GROUP_0, TIMER_0);
 
