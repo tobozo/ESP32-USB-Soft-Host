@@ -13,8 +13,12 @@
 #include "math.h"
 #include "esp_heap_caps.h"
 
-#include "hal/cpu_hal.h"
-#include "hal/gpio_hal.h"
+#ifdef PLATFORMIO
+  #include "esp32-hal.h"
+#else
+  #include "hal/cpu_hal.h"
+  #include "hal/gpio_hal.h"
+#endif
 
 /*******************************
 *    warning!!!: any copy of this code or his part must include this:
