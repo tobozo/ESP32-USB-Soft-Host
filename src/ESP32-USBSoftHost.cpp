@@ -1,6 +1,11 @@
 
 #include "./ESP32-USBSoftHost.hpp"
 
+#if defined CONFIG_ESP_SYSTEM_MEMPROT_FEATURE || defined FORCE_TEMPLATED_NOPS
+  #pragma message "memory protection features disabled, templated asm nop() will be used"
+  #include "nops.hpp"
+#endif
+
 static xQueueHandle usb_msg_queue = NULL;
 
 struct USBMessage

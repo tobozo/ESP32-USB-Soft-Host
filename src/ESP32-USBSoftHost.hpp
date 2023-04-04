@@ -14,12 +14,6 @@
   #endif
 #endif
 
-#if defined CONFIG_ESP_SYSTEM_MEMPROT_FEATURE || defined FORCE_TEMPLATED_NOPS
-  #pragma message "memory protection features disabled, templated asm nop() will be used"
-  #include "nops.hpp"
-#endif
-
-
 // include the modified version from Dmitry Samsonov
 extern "C"
 {
