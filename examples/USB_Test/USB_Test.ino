@@ -3,8 +3,19 @@
 #include <ESP32-USB-Soft-Host.h>
 #include "usbkbd.h" // KeyboardReportParser
 
+#if defined ARDUINO_LOLIN_S3
 
-#if defined ARDUINO_LOLIN_D32_PRO
+  #define PROFILE_NAME "LoLin S3"
+  #define DP_P0  15  // always enabled
+  #define DM_P0  16  // always enabled
+  #define DP_P1  -1
+  #define DM_P1  -1
+  #define DP_P2  -1
+  #define DM_P2  -1
+  #define DP_P3  -1
+  #define DM_P3  -1
+
+#elif defined ARDUINO_LOLIN_D32_PRO
   // [KO] 15/13 : unassigned pins seem unresponsive
   // [OK] 22/23 : pins for MOSI/SCK work just fine
   #define PROFILE_NAME "LoLin D32 Pro"
@@ -131,10 +142,10 @@ usb_pins_config_t USB_Pins_Config =
 
 void setup()
 {
-  Serial.begin(115200);
+  //Serial.begin(115200);
   delay(5000);
-  Serial.printf("USB Soft Host Test for %s\n", PROFILE_NAME );
-  Serial.printf("TIMER_BASE_CLK: %d, TIMER_DIVIDER:%d, TIMER_SCALE: %d\n", TIMER_BASE_CLK, TIMER_DIVIDER, TIMER_SCALE );
+  printf("USB Soft Host Test for %s\n", PROFILE_NAME );
+  printf("TIMER_BASE_CLK: %d, TIMER_DIVIDER:%d, TIMER_SCALE: %d\n", TIMER_BASE_CLK, TIMER_DIVIDER, TIMER_SCALE );
   // USH.setTaskCore( 0 );
   // USH.setBlinkPin( (gpio_num_t) 2 );
   // USH.setTaskPriority( 16 );
