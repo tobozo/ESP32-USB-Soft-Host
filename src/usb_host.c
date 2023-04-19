@@ -108,7 +108,7 @@ uint8_t _getCycleCount8d8(void)
 #define SE_J  { *snd[1][0] = (1 << DM_PIN);*snd[1][1] = (1 << DP_PIN); }
 #define SE_0  { *snd[2][0] = (1 << DM_PIN);*snd[2][1] = (1 << DP_PIN); }
 
-#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
   #define SET_I { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DM_PIN]); GPIO.enable_w1tc = (1 << DP_PIN) | (1 << DM_PIN);  }
   #define SET_O { GPIO.enable_w1ts = (1 << DP_PIN) | (1 << DM_PIN);  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DM_PIN]);  }
   #define READ_BOTH_PINS (((GPIO.in&RD_MASK)<<8)>>RD_SHIFT)
@@ -164,7 +164,7 @@ uint8_t decoded_receive_buffer[DEF_BUFF_SIZE];
 void (*cpuDelay)() = NULL;
 
 
-#if defined CONFIG_ESP_SYSTEM_MEMPROT_FEATURE || defined FORCE_TEMPLATED_NOPS
+#if defined CONFIG_ESP_SYSTEM_MEMPROT_FEATURE || defined FORCE_TEMPLATED_NOPS || defined CONFIG_IDF_TARGET_ESP32S3
   // memory protection enabled, MALLOC_CAP_EXEC can't be used
   // use c++ templated nop() instead (see nops.hpp)
   typedef void (*CpuDelay_t)();
@@ -192,7 +192,7 @@ void (*cpuDelay)() = NULL;
 
   void makeOpcodes( uint8_t* ptr, uint8_t ticks )
   {
-    #if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
+    #if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
       printf("Making xtensa Opcodes for ESP32/ESP32S2\n");
       //put head of delay procedure
       *ptr++ = 0x36;
@@ -1337,17 +1337,19 @@ sUsbContStruct  current_usb[NUM_USB];
 int checkPins(int dp,int dm)
 {
   int diff = abs(dp-dm);
+  if( dp<0 || dm < 0 ) return 0;
+
   if(diff>7||diff==0) {
-    printf("Diff not in [1-7] range: %d\n", diff );
+    printf("Diff not in [1-7] range: %d (%d-%d)\n", diff, dp, dm );
     return 0;
   }
 
   if( dp<8 || dp>31) {
-    printf("Dp not in [8-31] range: [%d]\n", dp );
+    printf("WARN: Dp not in [8-31] range: [%d]\n", dp );
     return 0;
   }
   if( dm<8 || dm>31) {
-    printf("Dm not in [8-31] range: [%d]\n", dp );
+    printf("WARN: Dm not in [8-31] range: [%d]\n", dp );
     return 0;
   }
 
