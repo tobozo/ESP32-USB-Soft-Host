@@ -1,3 +1,7 @@
+#if !defined CONFIG_IDF_TARGET_ESP32S3 && !defined CONFIG_IDF_TARGET_ESP32S2
+  #error "This sketch will only run on ESP32-S2 or S3"
+#endif
+
 #if ARDUINO_USB_MODE
   #error "This sketch should be used when USB is in OTG mode"
 #endif
