@@ -44,6 +44,10 @@ typedef void (*ontick_t)();
 
 void Default_USB_DetectCB( uint8_t usbNum, void * dev );
 void Default_USB_DataCB(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len);
+void Default_USB_ConfigDescCB( uint8_t ref, int cfgCount, void *lcfg, size_t len );
+void Default_USB_IfaceDescCb(uint8_t ref, int cfgCount, int sIntfCount, void* sIntf, size_t len);
+void Default_USB_HIDDevDescCb(uint8_t ref, int cfgCount, int sIntfCount, int hidCount, void*hid, size_t len);
+void Default_USB_EPDescCb(uint8_t ref, int cfgCount, int epdCount, void*epd, size_t len);
 
 #if !defined USE_NATIVE_GROUP_TIMERS
 
@@ -69,6 +73,10 @@ class USB_SOFT_HOST
     bool init( usb_pins_config_t pconf, ondetectcb_t detectCB = Default_USB_DetectCB, printcb_t onDataCB = Default_USB_DataCB, ontick_t onTickCB = nullptr );
     void setPrintCb( printcb_t onDataCB );
     void setOndetectCb( ondetectcb_t onDetectCB );
+    void setOnConfigDescCB( onconfigdesccb_t cb );
+    void setOnIfaceDescCb( onifacedesccb_t cb );
+    void setOnHIDDevDescCb( onhiddevdesccb_t cb );
+    void setOnEPDescCb( onepdesccb_t cb );
 
     void setTaskTicker( ontick_t onTickCB );
     void setActivityBlinker( onledblinkcb_t onActivityCB );

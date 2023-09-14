@@ -44,6 +44,8 @@ void Default_USB_DetectCB( uint8_t usbNum, void * dev )
   // }
 }
 
+
+
 void Default_USB_DataCB(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len)
 {
   // if( myListenUSBPort != usbNum ) return;
@@ -53,6 +55,65 @@ void Default_USB_DataCB(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8
   }
   printf("\n");
 }
+
+
+
+void Default_USB_ConfigDescCB( uint8_t ref, int cfgCount, void *cfg, size_t len )
+{
+  sCfgDesc *lcfg = (sCfgDesc*)cfg;
+  printf("Config Descriptor #%d\n", cfgCount);
+  printf("  cfg.wLength         = 0x%02x\n", lcfg->wLength);
+  printf("  cfg.bNumIntf        = 0x%02x\n", lcfg->bNumIntf);
+  printf("  cfg.bCV             = 0x%02x\n", lcfg->bCV);
+  printf("  cfg.bMaxPower       = %d\n",     lcfg->bMaxPower);
+}
+
+
+void Default_USB_IfaceDescCb(uint8_t ref, int cfgCount, int sIntfCount, void* Intf, size_t len)
+{
+  sIntfDesc *sIntf = (sIntfDesc*)Intf;
+  printf("    Interface Descriptor #%d\n", sIntfCount);
+  printf("      sIntf.bLength     = 0x%02x\n", sIntf->bLength);
+  printf("      sIntf.bType       = 0x%02x\n", sIntf->bType);
+  printf("      sIntf.iNum        = 0x%02x\n", sIntf->iNum);
+  printf("      sIntf.iAltString  = 0x%02x\n", sIntf->iAltString);
+  printf("      sIntf.bEndPoints  = 0x%02x\n", sIntf->bEndPoints);
+  printf("      sIntf.iClass      = 0x%02x\n", sIntf->iClass);
+  printf("      sIntf.iSub        = 0x%02x\n", sIntf->iSub);
+  printf("      sIntf.iProto      = 0x%02x\n", sIntf->iProto);
+  printf("      sIntf.iIndex      = 0x%02x\n", sIntf->iIndex);
+}
+
+
+void Default_USB_HIDDevDescCb(uint8_t ref, int cfgCount, int sIntfCount, int hidCount, void*vhid, size_t len)
+{
+  HIDDescriptor *hid = (HIDDescriptor*)vhid;
+  printf("        HID Device Descriptor #%d\n", hidCount);
+  printf("          hid.bLength               = 0x%02x\n", hid->bLength               );
+  printf("          hid.bDescriptorType       = 0x%02x\n", hid->bDescriptorType       );
+  printf("          hid.bcdHID                = 0x%02x\n", hid->bcdHID                );
+  printf("          hid.bCountryCode          = 0x%02x\n", hid->bCountryCode          );
+  printf("          hid.bNumDescriptors       = 0x%02x\n", hid->bNumDescriptors       );
+  printf("          hid.bReportDescriptorType = 0x%02x\n", hid->bReportDescriptorType );
+  printf("          hid.wItemLengthL          = 0x%02x\n", hid->wItemLengthL          );
+  printf("          hid.wItemLengthH          = 0x%02x\n", hid->wItemLengthH          );
+}
+
+
+void Default_USB_EPDescCb(uint8_t ref, int cfgCount, int epdCount, void*vepd, size_t len)
+{
+  sEPDesc *epd = (sEPDesc*)vepd;
+  printf("      EndPoint Descriptor #%d\n", epdCount);
+  printf("        epd.bLength       = 0x%02x\n", epd->bLength);
+  printf("        epd.bType         = 0x%02x\n", epd->bType);
+  printf("        epd.bEPAdd        = 0x%02x\n", epd->bEPAdd);
+  printf("        epd.bAttr         = 0x%02x\n", epd->bAttr);
+  printf("        epd.wPayLoad      = 0x%02x\n", epd->wPayLoad);
+  printf("        epd.bInterval     = 0x%02x\n", epd->bInterval);
+}
+
+
+
 
 
 #if !defined USE_NATIVE_GROUP_TIMERS
@@ -242,6 +303,29 @@ void USB_SOFT_HOST::setOndetectCb( ondetectcb_t onDetectCB )
   set_ondetect_cb( onDetectCB );
 }
 
+
+void USB_SOFT_HOST::setOnConfigDescCB( onconfigdesccb_t cb )
+{
+  set_onconfigdesc_cb(cb);
+}
+
+
+void USB_SOFT_HOST::setOnIfaceDescCb( onifacedesccb_t cb )
+{
+  set_onifacedesc_cb(cb);
+}
+
+
+void USB_SOFT_HOST::setOnHIDDevDescCb( onhiddevdesccb_t cb )
+{
+  set_onhiddevdesc_cb(cb);
+}
+
+
+void USB_SOFT_HOST::setOnEPDescCb( onepdesccb_t cb )
+{
+  set_onepdesc_cb(cb);
+}
 
 
 void USB_SOFT_HOST::setTaskTicker( ontick_t onTickCB )
