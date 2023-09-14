@@ -1,9 +1,8 @@
 #define DEBUG_ALL
 #define FORCE_TEMPLATED_NOPS
 #include <ESP32-USB-Soft-Host.h>
-#include "usbkbd.h" // KeyboardReportParser
 
-#if defined ARDUINO_LOLIN_S3
+#if defined ARDUINO_LOLIN_S3 || defined ARDUINO_LOLIN_S3_PRO
 
   #define PROFILE_NAME "LoLin S3"
   #define DP_P0  15  // always enabled
@@ -149,6 +148,11 @@ void setup()
   // USH.setTaskCore( 0 );
   // USH.setBlinkPin( (gpio_num_t) 2 );
   // USH.setTaskPriority( 16 );
+  USH.setOnConfigDescCB( Default_USB_ConfigDescCB );
+  USH.setOnIfaceDescCb( Default_USB_IfaceDescCb );
+  USH.setOnHIDDevDescCb( Default_USB_HIDDevDescCb );
+  USH.setOnEPDescCb( Default_USB_EPDescCb );
+
   USH.init( USB_Pins_Config, my_USB_DetectCB, my_USB_PrintCB );
 }
 

@@ -11,7 +11,6 @@
 #define DM_P0  16  // USB Host Data- Pin (must be an analog pin)
 #define FORCE_TEMPLATED_NOPS
 #include <ESP32-USB-Soft-Host.h>
-#include "usbkbd.h"
 
 // Device Part (handles HID device emulation)
 #include "USB.h"
@@ -80,6 +79,11 @@ void setup()
   // USH.setTaskCore( 0 );
   // USH.setBlinkPin( (gpio_num_t) 2 );
   // USH.setTaskPriority( 16 );
+  USH.setOnConfigDescCB( Default_USB_ConfigDescCB );
+  USH.setOnIfaceDescCb( Default_USB_IfaceDescCb );
+  USH.setOnHIDDevDescCb( Default_USB_HIDDevDescCb );
+  USH.setOnEPDescCb( Default_USB_EPDescCb );
+
   USH.init( USB_Pins_Config, onKeyboarDetect, onKeyboardData );
 }
 
