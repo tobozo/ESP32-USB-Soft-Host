@@ -190,10 +190,16 @@ void (*cpuDelay)() = NULL;
     #error "Unsupported target"
   #endif
 
+  #if defined DEBUG_ALL
+    #define DEBUG_OPCODE printf
+  #else
+    #define DEBUG_OPCODE (void)
+  #endif
+
   void makeOpcodes( uint8_t* ptr, uint8_t ticks )
   {
     #if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
-      printf("Making xtensa Opcodes for ESP32/ESP32S2\n");
+      DEBUG_OPCODE("Making xtensa Opcodes for ESP32/ESP32S2\n");
       //put head of delay procedure
       *ptr++ = 0x36;
       *ptr++ = 0x41;
@@ -209,7 +215,7 @@ void (*cpuDelay)() = NULL;
       *ptr++ = 0x00;
       *ptr++ = 0x00;
     #elif CONFIG_IDF_TARGET_ESP32C3
-      printf("Making RISCV Opcodes for ESP32C3\n");
+      DEBUG_OPCODE("Making RISCV Opcodes for ESP32C3\n");
       //put head of delay procedure
       for(int k=0;k<ticks;k++) {
         //put NOPs
@@ -224,21 +230,22 @@ void (*cpuDelay)() = NULL;
     #endif
   }
 
+
   void setCPUDelay(uint8_t ticks)
   {
     uint8_t* pntS;
 
-    printf("Setting delay to %d ticks\n", ticks);
+    DEBUG_OPCODE("Setting delay to %d ticks\n", ticks);
 
     size_t free_iram = heap_caps_get_free_size(MALLOC_CAP_EXEC);
-    printf("Free iram before alloc: %d\n", free_iram );
+    DEBUG_OPCODE("Free iram before alloc: %d\n", free_iram );
 
     // it can't execute but can read & write
     if(!cpuDelay) {
-      printf("Malloc MAX_DELAY_CODE_SIZE=%d\n", MAX_DELAY_CODE_SIZE );
+      DEBUG_OPCODE("Malloc MAX_DELAY_CODE_SIZE=%d\n", MAX_DELAY_CODE_SIZE );
       pntS = SDELAYMALLOC( MAX_DELAY_CODE_SIZE );
     } else {
-      printf("Realloc MAX_DELAY_CODE_SIZE=%d\n", MAX_DELAY_CODE_SIZE );
+      DEBUG_OPCODE("Realloc MAX_DELAY_CODE_SIZE=%d\n", MAX_DELAY_CODE_SIZE );
       pntS = SDELAYREALLOC( cpuDelay, MAX_DELAY_CODE_SIZE, MALLOC_CAP_8BIT );
     }
 
@@ -249,16 +256,16 @@ void (*cpuDelay)() = NULL;
 
     uint8_t* pnt = (uint8_t*)pntS;
     makeOpcodes( pnt, ticks );
-    printf("moving opecodes to executable memory segment\n");
+    DEBUG_OPCODE("moving opecodes to executable memory segment\n");
     // it can't  write  but can read & execute
 
     free_iram = heap_caps_get_free_size(MALLOC_CAP_EXEC);
-    printf("Free iram after alloc and before realloc: %d\n", free_iram );
+    DEBUG_OPCODE("Free iram after alloc and before realloc: %d\n", free_iram );
 
     cpuDelay = SDELAYREALLOC( pntS, MAX_DELAY_CODE_SIZE, SDELAYRMASK );
 
     free_iram = heap_caps_get_free_size(MALLOC_CAP_EXEC);
-    printf("Free iram after realloc to cap_exec: %d\n", free_iram );
+    DEBUG_OPCODE("Free iram after realloc to cap_exec: %d\n", free_iram );
 
     if(!cpuDelay) {
       printf("idf.py menuconfig\n Component config-> ESP System Setting -> Memory protectiom-> Disable.\n memory prot must be disabled!!!\n cpuDelay = %p,\nHalting...\n",cpuDelay);
@@ -373,44 +380,6 @@ typedef struct
 
 sUsbContStruct * current;
 
-void parseImmed(sUsbContStruct * pcurrent)
-{
-  static sCfgDesc      cfg;
-  static sIntfDesc     sIntf;
-  static HIDDescriptor hid[4];
-  static sEPDesc       epd;
-  static int           cfgCount   = 0;
-  static int           sIntfCount   = 0;
-  static int           hidCount   = 0;
-  int                  pos = 0;
-
-  pcurrent->epCount     = 0;
-
-  while(pos<pcurrent->descrBufferLen-2) {
-    uint8_t len  =  pcurrent->descrBuffer[pos];
-    uint8_t type =  pcurrent->descrBuffer[pos+1];
-    if(len==0) {
-      //printf("pos = %02x type = %02x cfg.wLength = %02x pcurrent->acc_decoded_resp_counter = %02x\n ",pos,type,cfg.wLength,pcurrent->acc_decoded_resp_counter);
-      pos = pcurrent->descrBufferLen;
-    }
-    if(pos+len<=pcurrent->descrBufferLen) {
-      if(type == 0x2) {
-        memcpy(&cfg,&pcurrent->descrBuffer[pos],len);
-
-      } else if (type == 0x4) {
-        memcpy(&sIntf,&pcurrent->descrBuffer[pos],len);
-      } else if (type == 0x21) {
-        hidCount++;
-        int i = hidCount-1;
-        memcpy(&hid[i],&pcurrent->descrBuffer[pos],len);
-      } else if (type == 0x5) {
-        pcurrent->epCount++;
-        memcpy(&epd,&pcurrent->descrBuffer[pos],len);
-      }
-    }
-    pos+=len;
-  }
-}
 
 #ifdef WR_SIMULTA
 uint32_t sndA[4]  = {0,0,0,0};
@@ -810,7 +779,7 @@ int ACK_BUFF_CNT = 0;
 
 void ACK()
 {
-  transmit_NRZI_buffer_cnt =0;
+  transmit_NRZI_buffer_cnt = 0;
   if(ACK_BUFF_CNT==0) {
     pu_MSB(T_START,8);
     pu_MSB(T_ACK,8);// ack
@@ -1110,13 +1079,13 @@ void Request( uint8_t cmd, uint8_t addr, uint8_t eop, uint8_t dataCmd,uint8_t bm
 
   current->numb_reps_errors_allowed = 4;
   current->asckedReceiveBytes = waitForBytes;
-  current->acc_decoded_resp_counter    = 0;
+  current->acc_decoded_resp_counter = 0;
   current->cb_Cmd = CB_5;
 }
 
 
 
-void RequestSend(uint8_t cmd,   uint8_t addr,uint8_t eop, uint8_t  dataCmd,uint8_t bmRequestType, uint8_t bmRequest,uint16_t wValue,uint16_t wIndex,uint16_t wLen,uint16_t transmitL1Bytes,uint8_t* data)
+void RequestSend( uint8_t cmd, uint8_t addr, uint8_t eop, uint8_t dataCmd, uint8_t bmRequestType, uint8_t bmRequest, uint16_t wValue, uint16_t wIndex, uint16_t wLen, uint16_t transmitL1Bytes, uint8_t* data)
 {
   current->rq.cmd  = cmd;
   current->rq.addr = addr;
@@ -1132,12 +1101,12 @@ void RequestSend(uint8_t cmd,   uint8_t addr,uint8_t eop, uint8_t  dataCmd,uint8
     current->transmitL1[k] = data[k];
   }
   current->numb_reps_errors_allowed = 4;
-  current->acc_decoded_resp_counter    = 0;
+  current->acc_decoded_resp_counter = 0;
   current->cb_Cmd = CB_3;
 }
 
 
-void RequestIn(uint8_t cmd,   uint8_t addr,uint8_t eop,uint16_t waitForBytes)
+void RequestIn(uint8_t cmd, uint8_t addr, uint8_t eop, uint16_t waitForBytes)
 {
   current->rq.cmd  = cmd;
   current->rq.addr = addr;
@@ -1150,15 +1119,42 @@ void RequestIn(uint8_t cmd,   uint8_t addr,uint8_t eop,uint16_t waitForBytes)
 
 
 void (*usbMess)(uint8_t src,uint8_t len,uint8_t *data) = NULL;
-
 void set_usb_mess_cb( onusbmesscb_t onUSBMessCb )
 {
   usbMess = onUSBMessCb;
 }
 
 
-void (*onDetectCB)(uint8_t usbNum, void *device) = NULL;
 
+void (*onConfigDescCb)(uint8_t ref, int cfgCount, void *lcfg, size_t len);
+void set_onconfigdesc_cb( onconfigdesccb_t cb )
+{
+  onConfigDescCb = cb;
+}
+
+
+void (*onIfaceDescCb)(uint8_t ref, int cfgCount, int sIntfCount, void* sIntf, size_t len);
+void set_onifacedesc_cb( onifacedesccb_t cb )
+{
+  onIfaceDescCb = cb;
+}
+
+
+void (*onHIDDevDescCb)(uint8_t ref, int cfgCount, int sIntfCount, int hidCount, void*hid, size_t len);
+void set_onhiddevdesc_cb( onhiddevdesccb_t cb )
+{
+  onHIDDevDescCb = cb;
+}
+
+
+void (*onEPDescCb)(uint8_t ref, int cfgCount, int epdCount, void*epd, size_t len);
+void set_onepdesc_cb( onepdesccb_t cb )
+{
+  onEPDescCb = cb;
+}
+
+
+void (*onDetectCB)(uint8_t usbNum, void *device) = NULL;
 void set_ondetect_cb( ondetectcb_t cb )
 {
   onDetectCB = cb;
@@ -1166,7 +1162,6 @@ void set_ondetect_cb( ondetectcb_t cb )
 
 
 void (*onLedBlinkCB)(int on_off) = NULL;
-
 void set_onled_blink_cb( onledblinkcb_t cb )
 {
   onLedBlinkCB = cb;
@@ -1179,18 +1174,18 @@ void fsm_Mashine()
   current->bComplete = 0;
 
   if(current->fsm_state == 0) {
-    current->epCount = 0;
-    current->cb_Cmd     = CB_CHECK;
-    current->fsm_state   = 1;
+    current->epCount   = 0;
+    current->cb_Cmd    = CB_CHECK;
+    current->fsm_state = 1;
   }
   if(current->fsm_state == 1) {
     if(current->wires_last_state==M_ONE) { // if(1)
       current->cmdTimeOut = 100+current->selfNum*73;
-      current->cb_Cmd      = CB_WAIT0;
-      current->fsm_state   = 2;
+      current->cb_Cmd     = CB_WAIT0;
+      current->fsm_state  = 2;
     } else {
-      current->fsm_state   = 0;
-      current->cb_Cmd      = CB_CHECK;
+      current->fsm_state  = 0;
+      current->cb_Cmd     = CB_CHECK;
     }
   } else if(current->fsm_state==2) {
     current->cb_Cmd       = CB_RESET;
@@ -1198,9 +1193,9 @@ void fsm_Mashine()
   } else if(current->fsm_state==3) {
     current->cb_Cmd       = CB_POWER;
     #ifdef TEST
-      current->fsm_state    =  3;
+      current->fsm_state  =  3;
     #else
-      current->fsm_state    =  4;
+      current->fsm_state  =  4;
     #endif
   } else if(current->fsm_state==4) {
     Request(T_SETUP,ZERO_USB_ADDRESS,0b0000,T_DATA0,0x80,0x6,0x0100,0x0000,0x0012,0x0012);
@@ -1211,7 +1206,7 @@ void fsm_Mashine()
       current->ufPrintDesc |= 1;
     } else {
       if(current->numb_reps_errors_allowed<=0) {
-        current->fsm_state    =  0;
+        current->fsm_state = 0;
         return;
       }
     }
@@ -1221,19 +1216,19 @@ void fsm_Mashine()
 
   } else if(current->fsm_state==6) {
     current->cmdTimeOut = 5;
-    current->cb_Cmd       = CB_WAIT1;
-    current->fsm_state    = 7;
+    current->cb_Cmd     = CB_WAIT1;
+    current->fsm_state  = 7;
   } else if(current->fsm_state==7) {
     Request(T_SETUP,ASSIGNED_USB_ADDRESS,0b0000,T_DATA0,0x80,0x6,0x0200,0x0000,0x0009,0x0009);
-    current->fsm_state    = 8;
+    current->fsm_state  = 8;
   } else if(current->fsm_state==8) {
     if(current->acc_decoded_resp_counter==0x9) {
       memcpy(&current->cfg,current->acc_decoded_resp,0x9);
       current->ufPrintDesc |= 2;
       Request(T_SETUP,ASSIGNED_USB_ADDRESS,0b0000,T_DATA0,0x80,0x6,0x0200,0x0000,current->cfg.wLength,current->cfg.wLength);
-      current->fsm_state    = 9;
+      current->fsm_state = 9;
     } else {
-      current->fsm_state    = 0;
+      current->fsm_state = 0;
       return;
     }
   } else if(current->fsm_state==9) {
@@ -1241,15 +1236,15 @@ void fsm_Mashine()
       current->ufPrintDesc |= 4;
       current->descrBufferLen = current->acc_decoded_resp_counter;
       memcpy(current->descrBuffer,current->acc_decoded_resp,current->descrBufferLen);
-      current->fsm_state    = 97;
+      current->fsm_state  = 97;
     } else {
       current->cmdTimeOut = 5;
-      current->cb_Cmd       = CB_WAIT1;
-      current->fsm_state    = 7;
+      current->cb_Cmd     = CB_WAIT1;
+      current->fsm_state  = 7;
     }
   } else if(current->fsm_state==97) {
     Request(T_SETUP,ASSIGNED_USB_ADDRESS,0b0000,T_DATA0,0x00,0x9,0x0001,0x0000,0x0000,0x0000);
-     current->fsm_state    = 98;
+    current->fsm_state    = 98;
   } else if(current->fsm_state==98) {
     // config interfaces??
     Request(T_SETUP,ASSIGNED_USB_ADDRESS,0b0000,T_DATA0,0x21,0xa,0x0000,0x0000,0x0000,0x0000);
@@ -1271,23 +1266,23 @@ void fsm_Mashine()
     }
     if(current->epCount>=2) {
       RequestIn(T_IN,  ASSIGNED_USB_ADDRESS,2,8);
-      current->fsm_state    = 102;
+      current->fsm_state  = 102;
     } else {
       current->cmdTimeOut = 3;
-      current->cb_Cmd        = CB_WAIT1;
-      current->fsm_state      = 104;
-     }
+      current->cb_Cmd     = CB_WAIT1;
+      current->fsm_state  = 104;
+    }
   } else if(current->fsm_state==102) {
-     if(current->acc_decoded_resp_counter>=1) {
-       usbMess(current->selfNum*4+1,current->acc_decoded_resp_counter,current->acc_decoded_resp);
-       if( onLedBlinkCB ) onLedBlinkCB(1);
-     }
+    if(current->acc_decoded_resp_counter>=1) {
+      usbMess(current->selfNum*4+1,current->acc_decoded_resp_counter,current->acc_decoded_resp);
+      if( onLedBlinkCB ) onLedBlinkCB(1);
+    }
     current->cmdTimeOut = 2;
-    current->cb_Cmd        = CB_WAIT1;
-    current->fsm_state      = 104;
+    current->cb_Cmd     = CB_WAIT1;
+    current->fsm_state  = 104;
   } else if (current->fsm_state==104) {
     current->cmdTimeOut = 4;
-    current->cb_Cmd        = CB_WAIT1;
+    current->cb_Cmd     = CB_WAIT1;
   #ifdef  DEBUG_REPEAT
     static int rcnt =0;
     rcnt++;  //
@@ -1296,14 +1291,14 @@ void fsm_Mashine()
     if(current->wires_last_state!=M_ONE)
   #endif
     {
-      current->fsm_state      = 0;
+      current->fsm_state  = 0;
       return ;
     }
-    current->fsm_state      = 99;
+    current->fsm_state  = 99;
   } else {
     current->cmdTimeOut = 2;
-    current->cb_Cmd        = CB_WAIT1;
-    current->fsm_state      = 0;
+    current->cb_Cmd     = CB_WAIT1;
+    current->fsm_state  = 0;
   }
 }
 
@@ -1315,7 +1310,7 @@ void setPins(int DPPin,int DMPin)
   DM_PIN = DMPin;
   int diff = DPPin - DMPin;
   if(abs(diff)>7) {
-    printf("PIN DIFFERENCE MUST BE LESS 8!\n");
+    printf("PIN DIFFERENCE MUST BE LESS THAN 8!\n");
     return;
   }
   int MIN_PIN = (DPPin<DMPin)?DPPin:DMPin;
@@ -1565,7 +1560,7 @@ void usb_process()
 }
 
 
-
+// called from timer task
 void printState()
 {
   static int cntl = 0;
@@ -1601,7 +1596,6 @@ void printState()
       printf("desc.iSerialNumber   = %02x\n",pcurrent->desc.iSerialNumber);
       printf("desc.bNumConfigurations = %02x\n",pcurrent->desc.bNumConfigurations);
     }
-
   }
 
   if(pcurrent->ufPrintDesc&2) {
@@ -1610,13 +1604,10 @@ void printState()
 
   if(pcurrent->ufPrintDesc&4) {
     pcurrent->ufPrintDesc &= ~(uint32_t)4;
-    sCfgDesc lcfg;
-    sIntfDesc sIntf;
-    HIDDescriptor hid[4];
-    sEPDesc epd;
     int cfgCount   = 0;
-    int sIntfCount   = 0;
+    int sIntfCount = 0;
     int hidCount   = 0;
+    //int epCount    = 0;
     int pos = 0;
     #ifdef DEBUG_ALL
       printf("clear epCount %d self = %d\n",pcurrent->epCount,pcurrent->selfNum);
@@ -1631,34 +1622,72 @@ void printState()
       if(pos+len<=pcurrent->descrBufferLen) {
         //printf("\n");
         if(type == 0x2) {
-          sCfgDesc cfg;
-          memcpy(&cfg,&pcurrent->descrBuffer[pos],len);
-          #ifdef DEBUG_ALL
-            printf("cfg.wLength         = %02x\n",cfg.wLength);
-            printf("cfg.bNumIntf        = %02x\n",cfg.bNumIntf);
-            printf("cfg.bCV             = %02x\n",cfg.bCV);
-            printf("cfg.bMaxPower       = %d\n",cfg.bMaxPower);
-          #endif
+          // Config Descriptor
+          cfgCount++;
+          if(onConfigDescCb) onConfigDescCb(ref, cfgCount, &pcurrent->descrBuffer[pos], len);
+          else {
+            #ifdef DEBUG_ALL
+              sCfgDesc *lcfg = (sCfgDesc*)&pcurrent->descrBuffer[pos];
+              printf("Config Descriptor #%d\n", cfgCount);
+              printf("  cfg.wLength         = 0x%02x\n", lcfg->wLength);
+              printf("  cfg.bNumIntf        = 0x%02x\n", lcfg->bNumIntf);
+              printf("  cfg.bCV             = 0x%02x\n", lcfg->bCV);
+              printf("  cfg.bMaxPower       = %d\n",     lcfg->bMaxPower);
+            #endif
+          }
         } else if (type == 0x4) {
-          sIntfDesc sIntf;
-          memcpy(&sIntf,&pcurrent->descrBuffer[pos],len);
+          // Interface Descriptor
+          sIntfCount++;
+          if(onIfaceDescCb) onIfaceDescCb(ref, cfgCount, sIntfCount, &pcurrent->descrBuffer[pos], len);
+          else {
+            #ifdef DEBUG_ALL
+              sIntfDesc *sIntf = (sIntfDesc*)&pcurrent->descrBuffer[pos];
+              printf("    Interface Descriptor #%d\n", sIntfCount);
+              printf("      sIntf.bLength     = 0x%02x\n", sIntf->bLength);
+              printf("      sIntf.bType       = 0x%02x\n", sIntf->bType);
+              printf("      sIntf.iNum        = 0x%02x\n", sIntf->iNum);
+              printf("      sIntf.iAltString  = 0x%02x\n", sIntf->iAltString);
+              printf("      sIntf.bEndPoints  = 0x%02x\n", sIntf->bEndPoints);
+              printf("      sIntf.iClass      = 0x%02x\n", sIntf->iClass);
+              printf("      sIntf.iSub        = 0x%02x\n", sIntf->iSub);
+              printf("      sIntf.iProto      = 0x%02x\n", sIntf->iProto);
+              printf("      sIntf.iIndex      = 0x%02x\n", sIntf->iIndex);
+            #endif
+          }
         } else if (type == 0x21) {
+          // iInterface (HID Device Descriptor)
           hidCount++;
-          int i = hidCount-1;
-          memcpy(&hid[i],&pcurrent->descrBuffer[pos],len);
+          if(onHIDDevDescCb) onHIDDevDescCb(ref, cfgCount, sIntfCount, hidCount, &pcurrent->descrBuffer[pos], len);
+          else {
+            #ifdef DEBUG_ALL
+              HIDDescriptor *hid = (HIDDescriptor*)&pcurrent->descrBuffer[pos];
+              printf("        HID Device Descriptor #%d\n", hidCount);
+              printf("          hid.bLength               = 0x%02x\n", hid->bLength);
+              printf("          hid.bDescriptorType       = 0x%02x\n", hid->bDescriptorType);
+              printf("          hid.bcdHID                = 0x%02x\n", hid->bcdHID);
+              printf("          hid.bCountryCode          = 0x%02x\n", hid->bCountryCode);
+              printf("          hid.bNumDescriptors       = 0x%02x\n", hid->bNumDescriptors);
+              printf("          hid.bReportDescriptorType = 0x%02x\n", hid->bReportDescriptorType);
+              printf("          hid.wItemLengthL          = 0x%02x\n", hid->wItemLengthL);
+              printf("          hid.wItemLengthH          = 0x%02x\n", hid->wItemLengthH);
+            #endif
+          }
         } else if (type == 0x5) {
-          //pcurrent->epCount++;
-          sEPDesc epd;
-          memcpy(&epd,&pcurrent->descrBuffer[pos],len);
-          #ifdef DEBUG_ALL
-            printf("pcurrent->epCount = %d\n",pcurrent->epCount);
-            printf("epd.bLength       = %02x\n",epd.bLength);
-            printf("epd.bType         = %02x\n",epd.bType);
-            printf("epd.bEPAdd        = %02x\n",epd.bEPAdd);
-            printf("epd.bAttr         = %02x\n",epd.bAttr);
-            printf("epd.wPayLoad      = %02x\n",epd.wPayLoad);
-            printf("epd.bInterval     = %02x\n",epd.bInterval);
-          #endif
+          // EndPoint Descriptor
+          pcurrent->epCount++;
+          if(onEPDescCb) onEPDescCb(ref, cfgCount, pcurrent->epCount, &pcurrent->descrBuffer[pos], len);
+          else {
+            #ifdef DEBUG_ALL
+              sEPDesc *epd = (sEPDesc*)&pcurrent->descrBuffer[pos];
+              printf("      EndPoint Descriptor #%d\n", pcurrent->epCount);
+              printf("        epd.bLength       = 0x%02x\n", epd->bLength);
+              printf("        epd.bType         = 0x%02x\n", epd->bType);
+              printf("        epd.bEPAdd        = 0x%02x\n", epd->bEPAdd);
+              printf("        epd.bAttr         = 0x%02x\n", epd->bAttr);
+              printf("        epd.wPayLoad      = 0x%02x\n", epd->wPayLoad);
+              printf("        epd.bInterval     = 0x%02x\n", epd->bInterval);
+            #endif
+          }
         }
       }
       pos+=len;

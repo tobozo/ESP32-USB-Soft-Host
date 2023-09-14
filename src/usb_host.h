@@ -45,15 +45,23 @@ typedef void (*ondetectcb_t)( uint8_t usbNum, void *device );
 void set_ondetect_cb( ondetectcb_t onDetectCB );
 typedef void(*onledblinkcb_t)( int on_off );
 void set_onled_blink_cb( onledblinkcb_t cb );
-
+typedef void(*onconfigdesccb_t)( uint8_t ref, int cfgCount, void *lcfg, size_t len );
+void set_onconfigdesc_cb( onconfigdesccb_t cb );
+typedef void(*onifacedesccb_t)(uint8_t ref, int cfgCount, int sIntfCount, void* sIntf, size_t len);
+void set_onifacedesc_cb( onifacedesccb_t cb );
+typedef void(*onhiddevdesccb_t)(uint8_t ref, int cfgCount, int sIntfCount, int hidCount, void*hid, size_t len);
+void set_onhiddevdesc_cb( onhiddevdesccb_t cb );
+typedef void(*onepdesccb_t)(uint8_t ref, int cfgCount, int epdCount, void*epd, size_t len);
+void set_onepdesc_cb( onepdesccb_t cb );
 
 
 void initStates( int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3 );
 void setCPUDelay( uint8_t ticks );
+// keyboard led controls
 uint8_t usbGetFlags(int _usb_num);
 void usbSetFlags( int _usb_num,uint8_t flags );
 
-
+// Device Descriptor
 typedef struct
 {
   uint8_t bLength;
@@ -73,7 +81,7 @@ typedef struct
 } sDevDesc;
 
 
-
+// Configuration Descriptor
 typedef struct
 {
   uint8_t bLength;
@@ -87,7 +95,7 @@ typedef struct
 } sCfgDesc;
 
 
-
+// Interface Descriptor
 typedef struct
 {
   uint8_t bLength;
@@ -102,19 +110,7 @@ typedef struct
 } sIntfDesc;
 
 
-
-typedef struct
-{
-  uint8_t bLength;
-  uint8_t bType;
-  uint8_t bEPAdd;
-  uint8_t bAttr;
-  uint16_t wPayLoad;               /* low-speed this must be 0x08 */
-  uint8_t bInterval;
-} sEPDesc;
-
-
-
+// HID Device Descriptor
 typedef struct
 {
   uint8_t   bLength;
@@ -126,6 +122,19 @@ typedef struct
   uint8_t   wItemLengthL;
   uint8_t   wItemLengthH;
 } HIDDescriptor;
+
+
+// EndPoint Descriptor
+typedef struct
+{
+  uint8_t bLength;
+  uint8_t bType;
+  uint8_t bEPAdd;
+  uint8_t bAttr;
+  uint16_t wPayLoad;               /* low-speed this must be 0x08 */
+  uint8_t bInterval;
+} sEPDesc;
+
 
 
 
