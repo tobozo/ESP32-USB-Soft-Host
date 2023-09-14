@@ -25,7 +25,7 @@ KbdRptParser Prs;
 // keyboard data parser to pass to the USB driver as a callback
 static void m5_USB_PrintCB(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len)
 {
-  Prs.Parse( data_len, data );
+  Prs.Parse( usbNum, data_len, data );
 }
 
 
@@ -34,17 +34,17 @@ static void my_USB_DetectCB( uint8_t usbNum, void * dev )
 {
   sDevDesc *device = (sDevDesc*)dev;
   printf("New device detected on USB#%d\n", usbNum);
-  // printf("desc.bcdUSB             = 0x%04x\n", device->bcdUSB);
-  // printf("desc.bDeviceClass       = 0x%02x\n", device->bDeviceClass);
-  // printf("desc.bDeviceSubClass    = 0x%02x\n", device->bDeviceSubClass);
-  // printf("desc.bDeviceProtocol    = 0x%02x\n", device->bDeviceProtocol);
-  // printf("desc.bMaxPacketSize0    = 0x%02x\n", device->bMaxPacketSize0);
+  printf("desc.bcdUSB             = 0x%04x\n", device->bcdUSB);
+  printf("desc.bDeviceClass       = 0x%02x\n", device->bDeviceClass);
+  printf("desc.bDeviceSubClass    = 0x%02x\n", device->bDeviceSubClass);
+  printf("desc.bDeviceProtocol    = 0x%02x\n", device->bDeviceProtocol);
+  printf("desc.bMaxPacketSize0    = 0x%02x\n", device->bMaxPacketSize0);
   printf("desc.idVendor           = 0x%04x\n", device->idVendor);
   printf("desc.idProduct          = 0x%04x\n", device->idProduct);
-  // printf("desc.bcdDevice          = 0x%04x\n", device->bcdDevice);
-  // printf("desc.iManufacturer      = 0x%02x\n", device->iManufacturer);
-  // printf("desc.iSerialNumber      = 0x%02x\n", device->iSerialNumber);
-  // printf("desc.bNumConfigurations = 0x%02x\n", device->bNumConfigurations);
+  printf("desc.bcdDevice          = 0x%04x\n", device->bcdDevice);
+  printf("desc.iManufacturer      = 0x%02x\n", device->iManufacturer);
+  printf("desc.iSerialNumber      = 0x%02x\n", device->iSerialNumber);
+  printf("desc.bNumConfigurations = 0x%02x\n", device->bNumConfigurations);
   // if( device->iProduct == mySupportedIdProduct && device->iManufacturer == mySupportedManufacturer ) {
   //   myListenUSBPort = usbNum;
   // }
@@ -92,6 +92,12 @@ void setup()
   tft.setCursor(cursorX, cursorY );
   // init blinky
   blinkCursor();
+
+  USH.setOnConfigDescCB( Default_USB_ConfigDescCB );
+  USH.setOnIfaceDescCb( Default_USB_IfaceDescCb );
+  USH.setOnHIDDevDescCb( Default_USB_HIDDevDescCb );
+  USH.setOnEPDescCb( Default_USB_EPDescCb );
+
   // init the USB Host
   USH.init(
     (usb_pins_config_t){

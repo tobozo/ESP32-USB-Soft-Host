@@ -79,34 +79,32 @@ class KeyboardReportParser
 
     KeyboardReportParser()
     {
-      //bLeds = 0;
-      bmCapsLock   = false;
-      bmNumLock    = false;
-      bmScrollLock = false;
+      kbdLockingKeys.bLeds = 0;
     };
 
-    bool bmCapsLock;
-    bool bmNumLock;
-    bool bmScrollLock;
-
     uint8_t OemToAscii(uint8_t mod, uint8_t key);
-    void Parse(uint8_t len, uint8_t *buf);
+    void Parse(uint8_t usbNum, uint8_t len, uint8_t *buf);
 
 
   protected:
 
-    virtual uint8_t HandleLockingKeys(uint8_t key)
+    virtual uint8_t HandleLockingKeys(uint8_t usbNum, uint8_t key)
     {
+      uint8_t old_keys = kbdLockingKeys.bLeds;
       switch(key) {
         case UHS_HID_BOOT_KEY_NUM_LOCK:
-          bmNumLock = !bmNumLock;
+          kbdLockingKeys.kbdLeds.bmNumLock = ~kbdLockingKeys.kbdLeds.bmNumLock;
         break;
         case UHS_HID_BOOT_KEY_CAPS_LOCK:
-          bmCapsLock = !bmCapsLock;
+          kbdLockingKeys.kbdLeds.bmCapsLock = ~kbdLockingKeys.kbdLeds.bmCapsLock;
         break;
         case UHS_HID_BOOT_KEY_SCROLL_LOCK:
-          bmScrollLock = !bmScrollLock;
+          kbdLockingKeys.kbdLeds.bmScrollLock = ~kbdLockingKeys.kbdLeds.bmScrollLock;
         break;
+      }
+      if(old_keys != kbdLockingKeys.bLeds) {
+        // send report with modified led statuses
+        usbSetFlags(usbNum, kbdLockingKeys.bLeds );
       }
       return 0;
     };
@@ -129,7 +127,7 @@ const uint8_t KeyboardReportParser::symKeysLo[12] PROGMEM = {'-', '=', '[', ']',
 const uint8_t KeyboardReportParser::padKeys[5] PROGMEM = {'/', '*', '-', '+', '\r'};
 
 
-void KeyboardReportParser::Parse(uint8_t len, uint8_t *buf)
+void KeyboardReportParser::Parse(uint8_t usbNum, uint8_t len, uint8_t *buf)
 {
   if (buf[2] == 1)
     return;
@@ -149,7 +147,7 @@ void KeyboardReportParser::Parse(uint8_t len, uint8_t *buf)
         up = true;
     }
     if (!down) {
-      HandleLockingKeys(buf[i]);
+      HandleLockingKeys(usbNum, buf[i]);
       OnKeyDown(*buf, buf[i]);
     }
     if (!up)
@@ -166,8 +164,8 @@ uint8_t KeyboardReportParser::OemToAscii(uint8_t mod, uint8_t key)
   // [a-z]
   if (VALUE_WITHIN(key, 0x04, 0x1d)) {
     // Upper case letters
-    if ((bmCapsLock == 0 && shift) ||
-      (bmCapsLock == 1 && shift == 0))
+    if ((kbdLockingKeys.kbdLeds.bmCapsLock == 0 && shift) ||
+      (kbdLockingKeys.kbdLeds.bmCapsLock == 1 && shift == 0))
       return (key - 4 + 'A');
 
       // Lower case letters
@@ -181,7 +179,7 @@ uint8_t KeyboardReportParser::OemToAscii(uint8_t mod, uint8_t key)
       return ((key == UHS_HID_BOOT_KEY_ZERO) ? '0' : key - 0x1e + '1');
   }// Keypad Numbers
   else if(VALUE_WITHIN(key, 0x59, 0x61)) {
-    if(bmNumLock == 1)
+    if(kbdLockingKeys.kbdLeds.bmNumLock == 1)
       return (key - 0x59 + '1');
   } else if(VALUE_WITHIN(key, 0x2d, 0x38))
     return ((shift) ? (uint8_t)pgm_read_byte(&getSymKeysUp()[key - 0x2d]) : (uint8_t)pgm_read_byte(&getSymKeysLo()[key - 0x2d]));
@@ -191,8 +189,8 @@ uint8_t KeyboardReportParser::OemToAscii(uint8_t mod, uint8_t key)
     switch(key) {
       case UHS_HID_BOOT_KEY_SPACE: return (0x20);
       case UHS_HID_BOOT_KEY_ENTER: return ('\r'); // Carriage return (0x0D)
-      case UHS_HID_BOOT_KEY_ZERO2: return ((bmNumLock == 1) ? '0': 0);
-      case UHS_HID_BOOT_KEY_PERIOD: return ((bmNumLock == 1) ? '.': 0);
+      case UHS_HID_BOOT_KEY_ZERO2: return ((kbdLockingKeys.kbdLeds.bmNumLock == 1) ? '0': 0);
+      case UHS_HID_BOOT_KEY_PERIOD: return ((kbdLockingKeys.kbdLeds.bmNumLock == 1) ? '.': 0);
     }
   }
   return ( 0);
