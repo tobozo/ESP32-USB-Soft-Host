@@ -11,7 +11,7 @@
     "type": "git",
     "url": "https://github.com/tobozo/ESP32-USB-Soft-Host.git"
   },
-  "version": "0.1.4",
+  "version": "0.1.5",
   "frameworks": "arduino",
   "platforms": "espressif32",
   "headers": "ESP32-USB-Soft-Host.h"
