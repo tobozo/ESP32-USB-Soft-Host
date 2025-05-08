@@ -45,6 +45,11 @@ void Default_USB_DetectCB( uint8_t usbNum, void * dev )
 }
 
 
+void Default_USB_DisconnectCB( uint8_t usbNum )
+{
+  printf("USB#%d disconnected\n", usbNum);
+}
+
 
 void Default_USB_DataCB(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len)
 {
@@ -167,10 +172,12 @@ void Default_USB_EPDescCb(uint8_t ref, int cfgCount, int epdCount, void*vepd, si
 
 
 
-bool USB_SOFT_HOST::init( usb_pins_config_t pconf, ondetectcb_t onDetectCB, printcb_t onDataCB, ontick_t onTickCB )
+bool USB_SOFT_HOST::init( usb_pins_config_t pconf, ondetectcb_t onDetectCB, printcb_t onDataCB, ontick_t onTickCB, ondisconnectcb_t onDisconnectCB )
 {
   Serial.println("Attaching onDetectCB");
   setOndetectCb( onDetectCB );
+  Serial.println("Attaching onDisconnectCB");
+  setOndisconnectCb( onDisconnectCB );
   Serial.println("Attaching onDataCB");
   setPrintCb( onDataCB );
   Serial.println("Attaching onUSBMessageDecode");
@@ -301,6 +308,12 @@ void USB_SOFT_HOST::setPrintCb( printcb_t onDataCB )
 void USB_SOFT_HOST::setOndetectCb( ondetectcb_t onDetectCB )
 {
   set_ondetect_cb( onDetectCB );
+}
+
+
+void USB_SOFT_HOST::setOndisconnectCb( ondisconnectcb_t onDisconnectCB )
+{
+  set_ondisconnect_cb( onDisconnectCB );
 }
 
 

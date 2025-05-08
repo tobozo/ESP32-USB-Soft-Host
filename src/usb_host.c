@@ -47,6 +47,7 @@
 // Arduino IDE complains about volatile at init, but we don't care
 #pragma GCC diagnostic ignored "-Wdiscarded-qualifiers"
 #pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wunused-value"
 
 
 #define T_START      0b00000001
@@ -80,6 +81,7 @@
 // somethins short  like ACK
 #define SMALL_NO_DATA 36
 
+bool hid_device_connected = false;
 
 int TRANSMIT_TIME_DELAY = 110;  //delay each bit transmit
 int TIME_MULT           = 25;    //received time factor delta clocks* TIME_MULT/TIME_SCALE
@@ -803,10 +805,13 @@ void timerCallBack()
     current->wires_last_state = READ_BOTH_PINS>>8;
     if(current->wires_last_state==M_ONE) {
       // low speed
+      hid_device_connected = true;
     } else if(current->wires_last_state==P_ONE) {
-      //high speed
+      // high speed
+      hid_device_connected = true;
     } else if(current->wires_last_state==0x00) {
       // not connected
+      hid_device_connected = false;
     } else if(current->wires_last_state== (M_ONE + P_ONE) ) {
       //????
     }
@@ -1160,6 +1165,11 @@ void set_ondetect_cb( ondetectcb_t cb )
   onDetectCB = cb;
 }
 
+void (*onDisconnectCB)( uint8_t usbNum ) = NULL;
+void set_ondisconnect_cb( ondisconnectcb_t cb )
+{
+  onDisconnectCB = cb;
+}
 
 void (*onLedBlinkCB)(int on_off) = NULL;
 void set_onled_blink_cb( onledblinkcb_t cb )
@@ -1304,7 +1314,7 @@ void fsm_Mashine()
 
 
 
-void setPins(int DPPin,int DMPin)
+void IRAM_ATTR setPins(int DPPin,int DMPin)
 {
   DP_PIN = DPPin;
   DM_PIN = DMPin;
@@ -1494,7 +1504,7 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         float  cS_opt = testDelay6( out_config.freq_mhz );
 
         #define OPT_TIME (4.00f)
-        for( int p=0;p<9;p++ ) {
+        for( int p=0;p<15;p++ ) {
           TRANSMIT_TIME_DELAY = (uTime+dTime)/2;
           printf( "D=%4d ", TRANSMIT_TIME_DELAY );
           setCPUDelay( TRANSMIT_TIME_DELAY );
@@ -1544,7 +1554,7 @@ uint8_t usbGetFlags(int _usb_num)
 
 
 
-void usb_process()
+void IRAM_ATTR usb_process()
 {
   #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
     cpu_ll_enable_cycle_count();
@@ -1567,10 +1577,10 @@ void printState()
   cntl++;
   int ref = cntl%NUM_USB;
   sUsbContStruct * pcurrent = &current_usb[ref];
-  if(!pcurrent->isValid) return ;
+  if(!pcurrent->isValid) return;
   if((cntl%800)<NUM_USB) {
     #ifdef DEBUG_ALL
-      printf("USB%d: Ack = %d Nack = %d %02x pcurrent->cb_Cmd = %d  state = %d epCount = %d --",
+      printf("USB%d: Ack=%d Nack=%d %02x pcurrent->cb_Cmd=%d  state=%d epCount=%d --",
         cntl%NUM_USB, pcurrent->counterAck,
         pcurrent->counterNAck,
         pcurrent->wires_last_state,
@@ -1583,6 +1593,21 @@ void printState()
       }
       printf("\n");
     #endif
+  }
+
+  if( pcurrent->ufPrintDesc == 0 ) {
+    static bool connected[4] = {false, false, false, false};
+    if( hid_device_connected != connected[ref] ) { // state change
+      connected[ref] = hid_device_connected;
+      if( !hid_device_connected ) { // track disconnect (connect is already tracked by onDetectCB)
+        if( onDisconnectCB )
+          onDisconnectCB( ref );
+        #ifdef DEBUG_ALL
+        else
+          printf("USB#%d disconnected\n", ref);
+        #endif
+      }
+    }
   }
 
   if(pcurrent->ufPrintDesc&1) {

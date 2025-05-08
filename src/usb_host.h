@@ -43,6 +43,8 @@ typedef void (*printcb_t)( uint8_t usbNum, uint8_t byte_depth, uint8_t* data, ui
 void set_print_cb( printcb_t onDataCB );
 typedef void (*ondetectcb_t)( uint8_t usbNum, void *device );
 void set_ondetect_cb( ondetectcb_t onDetectCB );
+typedef void (*ondisconnectcb_t)( uint8_t usbNum );
+void set_ondisconnect_cb( ondisconnectcb_t onDisconnectCB );
 typedef void(*onledblinkcb_t)( int on_off );
 void set_onled_blink_cb( onledblinkcb_t cb );
 typedef void(*onconfigdesccb_t)( uint8_t ref, int cfgCount, void *lcfg, size_t len );

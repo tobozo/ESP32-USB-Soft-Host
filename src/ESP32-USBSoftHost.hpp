@@ -43,6 +43,7 @@ typedef void (*ontick_t)();
 
 
 void Default_USB_DetectCB( uint8_t usbNum, void * dev );
+void Default_USB_DisconnectCB( uint8_t usbNum );
 void Default_USB_DataCB(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, uint8_t data_len);
 void Default_USB_ConfigDescCB( uint8_t ref, int cfgCount, void *lcfg, size_t len );
 void Default_USB_IfaceDescCb(uint8_t ref, int cfgCount, int sIntfCount, void* sIntf, size_t len);
@@ -70,9 +71,10 @@ void IRAM_ATTR timer_group0_isr(void *para);
 class USB_SOFT_HOST
 {
   public:
-    bool init( usb_pins_config_t pconf, ondetectcb_t detectCB = Default_USB_DetectCB, printcb_t onDataCB = Default_USB_DataCB, ontick_t onTickCB = nullptr );
+    bool init( usb_pins_config_t pconf, ondetectcb_t detectCB = Default_USB_DetectCB, printcb_t onDataCB = Default_USB_DataCB, ontick_t onTickCB = nullptr, ondisconnectcb_t onDisconnectCB = Default_USB_DisconnectCB );
     void setPrintCb( printcb_t onDataCB );
     void setOndetectCb( ondetectcb_t onDetectCB );
+    void setOndisconnectCb( ondisconnectcb_t onDisconnectCB );
     void setOnConfigDescCB( onconfigdesccb_t cb );
     void setOnIfaceDescCb( onifacedesccb_t cb );
     void setOnHIDDevDescCb( onhiddevdesccb_t cb );
@@ -83,7 +85,7 @@ class USB_SOFT_HOST
     void setTaskPriority( uint8_t p ) { priority = p; };
     void setTaskCore( uint8_t c ) { core = c; }
     void setBlinkPin( gpio_num_t pin_number );
-    void setISRAllocFlag( int alloc_flags );
+    void setISRAllocFlag( int alloc_flags ); // ESP_INTR_FLAG_IRAM, ESP_INTR_FLAG_LEVEL2 or ESP_INTR_FLAG_LEVEL3``
     // use those to avoid the pesky "Guru Meditation Error: Core 1 panic'ed (Cache disabled but cached memory region accessed)" error
     // may happen when using SPIFFS, SD or other IRAM driven libraries
     void TimerPause();
