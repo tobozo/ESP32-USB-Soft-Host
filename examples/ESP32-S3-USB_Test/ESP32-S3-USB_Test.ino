@@ -17,7 +17,7 @@
 #include "USBHIDKeyboard.h" // Keybo
 USBHIDKeyboard Keyboard;
 
-static void onKeyboarDetect( uint8_t usbNum, void * dev )
+static void onKeyboardDetect( uint8_t usbNum, void * dev )
 {
   sDevDesc *device = (sDevDesc*)dev;
   printf("New device detected on USB#%d\n", usbNum);
@@ -84,7 +84,7 @@ void setup()
   USH.setOnHIDDevDescCb( Default_USB_HIDDevDescCb );
   USH.setOnEPDescCb( Default_USB_EPDescCb );
 
-  USH.init( USB_Pins_Config, onKeyboarDetect, onKeyboardData );
+  USH.init( USB_Pins_Config, onKeyboardDetect, onKeyboardData );
 }
 
 void loop()
