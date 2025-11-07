@@ -25,10 +25,12 @@ A callback can be attached both for detection and events.
 Hardware support
 ----------------
 
-This library has been tested on ESP32-Wroom/Wrover and works fine as long as the pins aren't
-shared (beware of the psram pins!).
-
-It has partial support for ESP32-S2, and remains untested on ESP32-S3 && ESP32-C3.
+| Microcontroller | Compatibility   | Comments
+|-----------------|-----------------|----------
+| **ESP32**       | Works           | Tested on ESP32-Wroom/Wrover and works fine as long as the pins aren't shared (beware of the psram pins!). |
+| **ESP32-S2**    | Partial support | |
+| **ESP32-S3**    | Works           | Tested on [Adafruit ESP32-S3 TFT Feather](https://learn.adafruit.com/adafruit-esp32-s3-tft-feather). |
+| **ESP32-C3**    | Unknown         | Untested. |
 
 
 Known working HID devices:
