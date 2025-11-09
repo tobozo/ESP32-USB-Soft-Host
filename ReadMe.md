@@ -9,6 +9,14 @@ with [esp32_usb_soft_host](https://github.com/sdima1357/esp32_usb_soft_host)
 
 Some parts of the code (e.g. the timer group isr calls) have been regressed to fit esp-idf 3.3 needs but it has been tested up to 4.4.2.
 
+Compatibility
+-------------
+
+This project requires Espressif [esp32](https://github.com/espressif/arduino-esp32) library:
+- Version `2.0.17` (which is the latest `2.x` release) is recommended which has been verified to work.
+- This project will _not_ compile with the `3.x` versions of the library.
+
+
 USB Low Speed is slow
 ---------------------
 
