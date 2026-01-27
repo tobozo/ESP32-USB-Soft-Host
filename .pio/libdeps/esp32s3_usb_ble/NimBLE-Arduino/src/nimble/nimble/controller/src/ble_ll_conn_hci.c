@@ -21,20 +21,21 @@
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
+#include <errno.h>
 #include "nimble/porting/nimble/include/syscfg/syscfg.h"
 #include "nimble/porting/nimble/include/os/os.h"
 #include "nimble/nimble/include/nimble/ble.h"
-#include "nimble/nimble/include/nimble/nimble_opt.h"
 #include "nimble/nimble/include/nimble/hci_common.h"
-#include "nimble/nimble/include/nimble/ble_hci_trans.h"
-#include "../include/controller/ble_ll.h"
-#include "../include/controller/ble_ll_utils.h"
-#include "../include/controller/ble_ll_hci.h"
-#include "../include/controller/ble_ll_conn.h"
-#include "../include/controller/ble_ll_ctrl.h"
-#include "../include/controller/ble_ll_scan.h"
-#include "../include/controller/ble_ll_adv.h"
+#include "nimble/nimble/controller/include/controller/ble_ll.h"
+#include "nimble/nimble/controller/include/controller/ble_ll_utils.h"
+#include "nimble/nimble/controller/include/controller/ble_ll_hci.h"
+#include "nimble/nimble/controller/include/controller/ble_ll_conn.h"
+#include "nimble/nimble/controller/include/controller/ble_ll_ctrl.h"
+#include "nimble/nimble/controller/include/controller/ble_ll_scan.h"
+#include "nimble/nimble/controller/include/controller/ble_ll_adv.h"
 #include "ble_ll_conn_priv.h"
+
+#if MYNEWT_VAL(BLE_LL_ROLE_CENTRAL) || MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL)
 
 /*
  * Used to limit the rate at which we send the number of completed packets
@@ -44,19 +45,22 @@ static ble_npl_time_t g_ble_ll_last_num_comp_pkt_evt;
 extern uint8_t *g_ble_ll_conn_comp_ev;
 
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
-static const uint8_t ble_ll_valid_conn_phy_mask = (BLE_HCI_LE_PHY_1M_PREF_MASK
+static const uint8_t ble_ll_conn_create_valid_phy_mask = (
+        BLE_HCI_LE_PHY_1M_PREF_MASK |
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_2M_PHY)
-                                | BLE_HCI_LE_PHY_2M_PREF_MASK
+        BLE_HCI_LE_PHY_2M_PREF_MASK |
 #endif
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_CODED_PHY)
-                                | BLE_HCI_LE_PHY_CODED_PREF_MASK
+        BLE_HCI_LE_PHY_CODED_PREF_MASK |
 #endif
-                              );
-static const uint8_t ble_ll_conn_required_phy_mask = (BLE_HCI_LE_PHY_1M_PREF_MASK
+        0);
+
+static const uint8_t ble_ll_conn_create_required_phy_mask = (
+        BLE_HCI_LE_PHY_1M_PREF_MASK |
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_CODED_PHY)
-                            | BLE_HCI_LE_PHY_CODED_PREF_MASK
+        BLE_HCI_LE_PHY_CODED_PREF_MASK |
 #endif
-                            );
+        0);
 #endif
 
 /**
@@ -73,7 +77,7 @@ ble_ll_init_alloc_conn_comp_ev(void)
     rc = 0;
     evbuf = g_ble_ll_conn_comp_ev;
     if (evbuf == NULL) {
-        evbuf = ble_hci_trans_buf_alloc(BLE_HCI_TRANS_BUF_EVT_HI);
+        evbuf = ble_transport_alloc_evt(0);
         if (!evbuf) {
             rc = -1;
         } else {
@@ -137,7 +141,7 @@ ble_ll_conn_comp_event_send(struct ble_ll_conn_sm *connsm, uint8_t status,
     struct ble_hci_ev_le_subev_enh_conn_complete *enh_ev;
     struct ble_hci_ev_le_subev_conn_complete *ev;
     struct ble_hci_ev *hci_ev = (void *) evbuf;
-    uint8_t *rpa;
+    uint8_t *rpa = NULL;
 
     BLE_LL_ASSERT(evbuf);
 
@@ -157,7 +161,9 @@ ble_ll_conn_comp_event_send(struct ble_ll_conn_sm *connsm, uint8_t status,
             enh_ev->peer_addr_type = connsm->peer_addr_type;
             memcpy(enh_ev->peer_addr, connsm->peer_addr, BLE_DEV_ADDR_LEN);
 
-            if (connsm->conn_role == BLE_LL_CONN_ROLE_MASTER) {
+            switch (connsm->conn_role) {
+#if MYNEWT_VAL(BLE_LL_ROLE_CENTRAL)
+            case BLE_LL_CONN_ROLE_CENTRAL:
                 if (connsm->inita_identity_used) {
                     /* We used identity address in CONNECT_IND which can be just
                      * fine if
@@ -172,35 +178,57 @@ ble_ll_conn_comp_event_send(struct ble_ll_conn_sm *connsm, uint8_t status,
                 } else {
                     rpa = NULL;
                 }
-            } else {
+                break;
+#endif
+#if MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL)
+            case BLE_LL_CONN_ROLE_PERIPHERAL:
                 rpa = ble_ll_adv_get_local_rpa(advsm);
+                break;
+#endif
+            default:
+                BLE_LL_ASSERT(0);
+                break;
             }
 
             if (rpa) {
                 memcpy(enh_ev->local_rpa, rpa, BLE_DEV_ADDR_LEN);
             }
 
-            /* We need to adjust peer type if device connected using RPA
-             * and was resolved since RPA needs to be added to HCI event.
-             */
-             if (connsm->peer_addr_type < BLE_HCI_CONN_PEER_ADDR_PUBLIC_IDENT
-                     && (connsm->rpa_index > -1)) {
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_PRIVACY)
+            /* Adjust address type if peer address was resolved */
+             if (connsm->peer_addr_resolved) {
                  enh_ev->peer_addr_type += 2;
              }
+#endif
 
              if (enh_ev->peer_addr_type > BLE_HCI_CONN_PEER_ADDR_RANDOM) {
-                 if (connsm->conn_role == BLE_LL_CONN_ROLE_MASTER) {
+                 switch (connsm->conn_role) {
+#if MYNEWT_VAL(BLE_LL_ROLE_CENTRAL)
+                 case BLE_LL_CONN_ROLE_CENTRAL:
                      rpa = ble_ll_scan_get_peer_rpa();
-                 } else {
+                     break;
+#endif
+#if MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL)
+                 case BLE_LL_CONN_ROLE_PERIPHERAL:
                      rpa = ble_ll_adv_get_peer_rpa(advsm);
+                 break;
+#endif
+                 default:
+                     BLE_LL_ASSERT(0);
+                     break;
                  }
+
                  memcpy(enh_ev->peer_rpa, rpa, BLE_DEV_ADDR_LEN);
              }
 
             enh_ev->conn_itvl = htole16(connsm->conn_itvl);
-            enh_ev->conn_latency = htole16(connsm->slave_latency);
+            enh_ev->conn_latency = htole16(connsm->periph_latency);
             enh_ev->supervision_timeout = htole16(connsm->supervision_tmo);
-            enh_ev->mca = connsm->master_sca;
+#if MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL)
+            if (connsm->conn_role == BLE_LL_CONN_ROLE_PERIPHERAL) {
+                enh_ev->mca = connsm->central_sca;
+            }
+#endif
         }
 
         ble_ll_hci_event_send(hci_ev);
@@ -221,22 +249,22 @@ ble_ll_conn_comp_event_send(struct ble_ll_conn_sm *connsm, uint8_t status,
             ev->conn_handle = htole16(connsm->conn_handle);
             ev->role = connsm->conn_role - 1;
             ev->peer_addr_type = connsm->peer_addr_type;
-
-            if (ev->peer_addr_type > BLE_HCI_CONN_PEER_ADDR_RANDOM) {
-                ev->peer_addr_type -= 2;
-            }
             memcpy(ev->peer_addr, connsm->peer_addr, BLE_DEV_ADDR_LEN);
             ev->conn_itvl = htole16(connsm->conn_itvl);
-            ev->conn_latency = htole16(connsm->slave_latency);
+            ev->conn_latency = htole16(connsm->periph_latency);
             ev->supervision_timeout = htole16(connsm->supervision_tmo);
-            ev->mca = connsm->master_sca;
+#if MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL)
+            if (connsm->conn_role == BLE_LL_CONN_ROLE_PERIPHERAL) {
+                ev->mca = connsm->central_sca;
+            }
+#endif
         }
 
         ble_ll_hci_event_send(hci_ev);
         return;
     }
 
-    ble_hci_trans_buf_free(evbuf);
+    ble_transport_free(evbuf);
 }
 
 /**
@@ -272,7 +300,7 @@ ble_ll_conn_num_comp_pkts_event_send(struct ble_ll_conn_sm *connsm)
          * entire active list every time.
          */
         if (connsm->completed_pkts) {
-            hci_ev = (void *) ble_hci_trans_buf_alloc(BLE_HCI_TRANS_BUF_EVT_HI);
+            hci_ev = ble_transport_alloc_evt(0);
             if (hci_ev) {
                 hci_ev->opcode = BLE_HCI_EVCODE_NUM_COMP_PKTS;
                 hci_ev->length = sizeof(*ev);
@@ -306,7 +334,7 @@ skip_conn:
             (connsm->completed_pkts || !STAILQ_EMPTY(&connsm->conn_txq))) {
             /* If no buffer, get one, If cant get one, leave. */
             if (!hci_ev) {
-                hci_ev = (void *) ble_hci_trans_buf_alloc(BLE_HCI_TRANS_BUF_EVT_HI);
+                hci_ev = ble_transport_alloc_evt(0);
                 if (!hci_ev) {
                     break;
                 }
@@ -362,7 +390,7 @@ ble_ll_auth_pyld_tmo_event_send(struct ble_ll_conn_sm *connsm)
     struct ble_hci_ev *hci_ev;
 
     if (ble_ll_hci_is_event_enabled(BLE_HCI_EVCODE_AUTH_PYLD_TMO)) {
-        hci_ev = (void *) ble_hci_trans_buf_alloc(BLE_HCI_TRANS_BUF_EVT_HI);
+        hci_ev = ble_transport_alloc_evt(0);
         if (hci_ev) {
             hci_ev->opcode = BLE_HCI_EVCODE_AUTH_PYLD_TMO;
             hci_ev->length = sizeof(*ev);
@@ -391,7 +419,7 @@ ble_ll_disconn_comp_event_send(struct ble_ll_conn_sm *connsm, uint8_t reason)
     struct ble_hci_ev *hci_ev;
 
     if (ble_ll_hci_is_event_enabled(BLE_HCI_EVCODE_DISCONN_CMP)) {
-        hci_ev = (void *) ble_hci_trans_buf_alloc(BLE_HCI_TRANS_BUF_EVT_HI);
+        hci_ev = ble_transport_alloc_evt(0);
         if (hci_ev) {
             hci_ev->opcode = BLE_HCI_EVCODE_DISCONN_CMP;
             hci_ev->length = sizeof(*ev);
@@ -407,17 +435,65 @@ ble_ll_disconn_comp_event_send(struct ble_ll_conn_sm *connsm, uint8_t reason)
     }
 }
 
-static int
-ble_ll_conn_hci_chk_scan_params(uint16_t itvl, uint16_t window)
+int
+ble_ll_conn_hci_create_check_scan(struct ble_ll_conn_create_scan *p)
 {
-    /* Check interval and window */
-    if ((itvl < BLE_HCI_SCAN_ITVL_MIN) ||
-        (itvl > BLE_HCI_SCAN_ITVL_MAX) ||
-        (window < BLE_HCI_SCAN_WINDOW_MIN) ||
-        (window > BLE_HCI_SCAN_WINDOW_MAX) ||
-        (itvl < window)) {
+    if (p->filter_policy > BLE_HCI_INITIATOR_FILT_POLICY_MAX) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
+
+    if ((p->filter_policy == 0) &&
+        (p->peer_addr_type > BLE_HCI_CONN_PEER_ADDR_MAX)) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+    if (p->own_addr_type > BLE_HCI_ADV_OWN_ADDR_MAX) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
+    if (p->init_phy_mask & ~ble_ll_conn_create_valid_phy_mask) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+    if (!(p->init_phy_mask & ble_ll_conn_create_required_phy_mask)) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+#endif
+
+    return 0;
+}
+
+static int
+ble_ll_conn_hci_create_check_params(struct ble_ll_conn_create_params *cc_params)
+{
+    int rc;
+
+    rc = ble_ll_conn_hci_chk_conn_params(cc_params->conn_itvl,
+                                         cc_params->conn_itvl,
+                                         cc_params->conn_latency,
+                                         cc_params->supervision_timeout);
+    if (rc) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+    if (cc_params->min_ce_len > cc_params->max_ce_len) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+    /* Adjust min/max ce length to be less than interval
+     * Note that interval is in 1.25ms and CE is in 625us
+     */
+    if (cc_params->min_ce_len > cc_params->conn_itvl * 2) {
+        cc_params->min_ce_len = cc_params->conn_itvl * 2;
+    }
+    if (cc_params->max_ce_len > cc_params->conn_itvl * 2) {
+        cc_params->max_ce_len = cc_params->conn_itvl * 2;
+    }
+
+    /* Precalculate conn interval */
+    ble_ll_conn_itvl_to_ticks(cc_params->conn_itvl, &cc_params->conn_itvl_ticks,
+                              &cc_params->conn_itvl_usecs);
 
     return 0;
 }
@@ -432,11 +508,17 @@ ble_ll_conn_hci_chk_scan_params(uint16_t itvl, uint16_t window)
  * @return int
  */
 int
-ble_ll_conn_create(const uint8_t *cmdbuf, uint8_t len)
+ble_ll_conn_hci_create(const uint8_t *cmdbuf, uint8_t len)
 {
     const struct ble_hci_le_create_conn_cp *cmd = (const void *) cmdbuf;
+    struct ble_ll_conn_create_scan cc_scan;
+    struct ble_ll_conn_create_params cc_params;
     struct ble_ll_conn_sm *connsm;
-    struct hci_create_conn hcc = { 0 };
+    uint16_t conn_itvl_min;
+    uint16_t conn_itvl_max;
+#if MYNEWT_VAL(BLE_LL_CONN_STRICT_SCHED)
+    uint16_t css_slot_idx = 0;
+#endif
     int rc;
 
     if (len < sizeof(*cmd)) {
@@ -444,7 +526,7 @@ ble_ll_conn_create(const uint8_t *cmdbuf, uint8_t len)
     }
 
     /* If we are already creating a connection we should leave */
-    if (g_ble_ll_conn_create_sm) {
+    if (g_ble_ll_conn_create_sm.connsm) {
         return BLE_ERR_CMD_DISALLOWED;
     }
 
@@ -453,55 +535,71 @@ ble_ll_conn_create(const uint8_t *cmdbuf, uint8_t len)
         return BLE_ERR_CMD_DISALLOWED;
     }
 
-    /* Retrieve command data */
-    hcc.scan_itvl = le16toh(cmd->scan_itvl);
-    hcc.scan_window = le16toh(cmd->scan_window);
-
-    rc = ble_ll_conn_hci_chk_scan_params(hcc.scan_itvl, hcc.scan_window);
-    if (rc) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
+    if (ble_ll_conn_find_by_peer_addr(cmd->peer_addr, cmd->peer_addr_type)) {
+        return BLE_ERR_ACL_CONN_EXISTS;
     }
 
-    /* Check filter policy */
-    hcc.filter_policy = cmd->filter_policy;
-    if (hcc.filter_policy > BLE_HCI_INITIATOR_FILT_POLICY_MAX) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
-    }
-
-    /* Get peer address type and address only if no whitelist used */
-    if (hcc.filter_policy == 0) {
-        hcc.peer_addr_type = cmd->peer_addr_type;
-        if (hcc.peer_addr_type > BLE_HCI_CONN_PEER_ADDR_MAX) {
-            return BLE_ERR_INV_HCI_CMD_PARMS;
+#if MYNEWT_VAL(BLE_LL_CONN_STRICT_SCHED)
+    if (ble_ll_sched_css_is_enabled()) {
+        css_slot_idx = ble_ll_conn_css_get_next_slot();
+        if (css_slot_idx == BLE_LL_CONN_CSS_NO_SLOT) {
+            return BLE_ERR_MEM_CAPACITY;
         }
-
-        memcpy(&hcc.peer_addr, cmd->peer_addr, BLE_DEV_ADDR_LEN);
     }
+#endif
 
-    /* Get own address type (used in connection request) */
-    hcc.own_addr_type = cmd->own_addr_type;
-    if (hcc.own_addr_type > BLE_HCI_ADV_OWN_ADDR_MAX) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
+    cc_scan.own_addr_type = cmd->own_addr_type;
+    cc_scan.filter_policy = cmd->filter_policy;
+    if (cc_scan.filter_policy == 0) {
+        cc_scan.peer_addr_type = cmd->peer_addr_type;
+        memcpy(&cc_scan.peer_addr, cmd->peer_addr, BLE_DEV_ADDR_LEN);
+    } else {
+        cc_scan.peer_addr_type = 0;
+        memset(&cc_scan.peer_addr, 0, BLE_DEV_ADDR_LEN);
     }
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
+    cc_scan.init_phy_mask = BLE_HCI_LE_PHY_1M_PREF_MASK;
+#endif
 
-    /* Check connection interval, latency and supervision timeoout */
-    hcc.conn_itvl_min = le16toh(cmd->min_conn_itvl);
-    hcc.conn_itvl_max = le16toh(cmd->max_conn_itvl);
-    hcc.conn_latency = le16toh(cmd->conn_latency);
-    hcc.supervision_timeout = le16toh(cmd->tmo);
-    rc = ble_ll_conn_hci_chk_conn_params(hcc.conn_itvl_min,
-                                         hcc.conn_itvl_max,
-                                         hcc.conn_latency,
-                                         hcc.supervision_timeout);
+    cc_scan.scan_params[PHY_UNCODED].itvl = le16toh(cmd->scan_itvl);
+    cc_scan.scan_params[PHY_UNCODED].window = le16toh(cmd->scan_window);
+
+    rc = ble_ll_conn_hci_create_check_scan(&cc_scan);
     if (rc) {
         return rc;
     }
 
-    /* Min/max connection event lengths */
-    hcc.min_ce_len = le16toh(cmd->min_ce);
-    hcc.max_ce_len = le16toh(cmd->max_ce);
-    if (hcc.min_ce_len > hcc.max_ce_len) {
+    conn_itvl_min = le16toh(cmd->min_conn_itvl);
+    conn_itvl_max = le16toh(cmd->max_conn_itvl);
+
+    /* Check min/max interval here since generic check does not have min/max
+     * parameters to check.
+     */
+    if (conn_itvl_min > conn_itvl_max) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+#if MYNEWT_VAL(BLE_LL_CONN_STRICT_SCHED)
+    if (ble_ll_sched_css_is_enabled()) {
+        cc_params.conn_itvl = ble_ll_sched_css_get_conn_interval_us();
+        if ((cc_params.conn_itvl < conn_itvl_min) ||
+            (cc_params.conn_itvl > conn_itvl_max)) {
+            return BLE_ERR_INV_HCI_CMD_PARMS;
+        }
+    } else {
+        cc_params.conn_itvl = conn_itvl_max;
+    }
+#else
+    cc_params.conn_itvl = conn_itvl_max;
+#endif
+    cc_params.conn_latency = le16toh(cmd->conn_latency);
+    cc_params.supervision_timeout = le16toh(cmd->tmo);
+    cc_params.min_ce_len = le16toh(cmd->min_ce);
+    cc_params.max_ce_len = le16toh(cmd->max_ce);
+
+    rc = ble_ll_conn_hci_create_check_params(&cc_params);
+    if (rc) {
+        return rc;
     }
 
     /* Make sure we can allocate an event to send the connection complete */
@@ -515,19 +613,25 @@ ble_ll_conn_create(const uint8_t *cmdbuf, uint8_t len)
         return BLE_ERR_CONN_LIMIT;
     }
 
-    /* Initialize state machine in master role and start state machine */
-    ble_ll_conn_master_init(connsm, &hcc);
+#if MYNEWT_VAL(BLE_LL_CONN_STRICT_SCHED)
+    connsm->css_slot_idx = css_slot_idx;
+    connsm->css_slot_idx_pending = BLE_LL_CONN_CSS_NO_SLOT;
+#endif
+
+    /* Initialize state machine in central role and start state machine */
+    ble_ll_conn_central_init(connsm, &cc_scan, &cc_params);
     ble_ll_conn_sm_new(connsm);
-    /* CSA will be selected when advertising is received */
 
     /* Start scanning */
-    rc = ble_ll_scan_initiator_start(&hcc, &connsm->scansm);
+    rc = ble_ll_scan_initiator_start(connsm, 0, &cc_scan);
     if (rc) {
         SLIST_REMOVE(&g_ble_ll_conn_active_list,connsm,ble_ll_conn_sm,act_sle);
         STAILQ_INSERT_TAIL(&g_ble_ll_conn_free_list, connsm, free_stqe);
-    } else {
-        /* Set the connection state machine we are trying to create. */
-        g_ble_ll_conn_create_sm = connsm;
+#if MYNEWT_VAL(BLE_LL_CONN_STRICT_SCHED)
+        if (ble_ll_sched_css_is_enabled()) {
+            SLIST_REMOVE(&g_ble_ll_conn_css_list, connsm, ble_ll_conn_sm, css_sle);
+        }
+#endif
     }
 
     return rc;
@@ -535,47 +639,132 @@ ble_ll_conn_create(const uint8_t *cmdbuf, uint8_t len)
 
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
 static void
-ble_ll_conn_hcc_params_set_fallback(struct hci_ext_create_conn *hcc,
-                                    const struct hci_ext_conn_params *fallback)
+ble_ll_conn_hci_ext_create_set_fb_params(uint8_t init_phy_mask,
+                                         struct ble_ll_conn_create_params *cc_params_fb)
 {
-    BLE_LL_ASSERT(fallback);
-
-    if (!(hcc->init_phy_mask & BLE_PHY_MASK_1M)) {
-        hcc->params[0] = *fallback;
+    if ((init_phy_mask & BLE_PHY_MASK_1M) == 0) {
+        g_ble_ll_conn_create_sm.params[BLE_PHY_IDX_1M] = *cc_params_fb;
     }
 
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_2M_PHY)
-    if (!(hcc->init_phy_mask & BLE_PHY_MASK_2M)) {
-        hcc->params[1] = *fallback;
+    if ((init_phy_mask & BLE_PHY_MASK_2M) == 0) {
+        g_ble_ll_conn_create_sm.params[BLE_PHY_IDX_2M] = *cc_params_fb;
     }
 #endif
 
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_CODED_PHY)
-    if (!(hcc->init_phy_mask & BLE_PHY_MASK_CODED)) {
-        hcc->params[2] = *fallback;
+    if ((init_phy_mask & BLE_PHY_MASK_CODED) == 0) {
+        g_ble_ll_conn_create_sm.params[BLE_PHY_IDX_CODED] = *cc_params_fb;
     }
 #endif
 }
 
-int
-ble_ll_ext_conn_create(const uint8_t *cmdbuf, uint8_t len)
+static int
+ble_ll_conn_hci_ext_create_parse_params(const struct conn_params *params,
+                                        uint8_t phy,
+                                        struct ble_ll_conn_create_scan *cc_scan,
+                                        struct ble_ll_conn_create_params *cc_params)
 {
-    const struct ble_hci_le_ext_create_conn_cp *cmd = (const void *) cmdbuf;
-    const struct conn_params *params = cmd->conn_params;
-    const struct hci_ext_conn_params *fallback_params = NULL;
-    struct hci_ext_create_conn hcc = { 0 };
-    struct ble_ll_conn_sm *connsm;
+    uint16_t conn_itvl_min;
+    uint16_t conn_itvl_max;
+    uint16_t scan_itvl;
+    uint16_t scan_window;
     int rc;
 
-    /* validate length */
-    if (len < sizeof(*cmd)) {
+    conn_itvl_min = le16toh(params->conn_min_itvl);
+    conn_itvl_max = le16toh(params->conn_max_itvl);
+
+    /* Check min/max interval here since generic check does not have min/max
+     * parameters to check.
+     */
+    if (conn_itvl_min > conn_itvl_max) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
-    len -= sizeof(*cmd);
+#if MYNEWT_VAL(BLE_LL_CONN_STRICT_SCHED)
+    if (ble_ll_sched_css_is_enabled()) {
+        cc_params->conn_itvl = ble_ll_sched_css_get_conn_interval_us();
+        if ((cc_params->conn_itvl < conn_itvl_min) ||
+            (cc_params->conn_itvl > conn_itvl_max)) {
+            return BLE_ERR_INV_HCI_CMD_PARMS;
+        }
+    } else {
+        cc_params->conn_itvl = conn_itvl_max;
+    }
+#else
+    cc_params->conn_itvl = conn_itvl_max;
+#endif
+    cc_params->conn_latency = le16toh(params->conn_latency);
+    cc_params->supervision_timeout = le16toh(params->supervision_timeout);
+    cc_params->min_ce_len = le16toh(params->min_ce);
+    cc_params->max_ce_len = le16toh(params->max_ce);
+
+    rc = ble_ll_conn_hci_create_check_params(cc_params);
+    if (rc) {
+        return rc;
+    }
+
+    if (phy != BLE_PHY_2M) {
+        scan_itvl = le16toh(params->scan_itvl);
+        scan_window = le16toh(params->scan_window);
+
+        if ((scan_itvl < BLE_HCI_SCAN_ITVL_MIN) ||
+            (scan_itvl > BLE_HCI_SCAN_ITVL_MAX) ||
+            (scan_window < BLE_HCI_SCAN_WINDOW_MIN) ||
+            (scan_window > BLE_HCI_SCAN_WINDOW_MAX) ||
+            (scan_itvl < scan_window)) {
+                return BLE_ERR_INV_HCI_CMD_PARMS;
+        }
+
+        if (phy == BLE_PHY_1M) {
+            cc_scan->scan_params[PHY_UNCODED].itvl = scan_itvl;
+            cc_scan->scan_params[PHY_UNCODED].window = scan_window;
+        } else {
+            cc_scan->scan_params[PHY_CODED].itvl = scan_itvl;
+            cc_scan->scan_params[PHY_CODED].window = scan_window;
+        }
+    }
+
+    return 0;
+}
+
+int
+ble_ll_conn_hci_ext_create(const uint8_t *cmdbuf, uint8_t len)
+{
+    static const struct init_phy {
+        uint8_t idx;
+        uint8_t mask;
+        uint8_t phy;
+    } init_phys[] = {
+            {BLE_PHY_IDX_1M, BLE_PHY_MASK_1M, BLE_PHY_1M},
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_2M_PHY)
+            {BLE_PHY_IDX_2M, BLE_PHY_MASK_2M, BLE_PHY_2M},
+#endif
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_CODED_PHY)
+            {BLE_PHY_IDX_CODED, BLE_PHY_MASK_CODED, BLE_PHY_CODED},
+#endif
+    };
+
+    const struct ble_hci_le_ext_create_conn_cp *cmd = (const void *)cmdbuf;
+    const struct conn_params *params = cmd->conn_params;
+    struct ble_ll_conn_create_scan cc_scan;
+    struct ble_ll_conn_create_params *cc_params;
+    struct ble_ll_conn_create_params *cc_params_fb;
+    struct ble_ll_conn_sm *connsm;
+    const struct init_phy *init_phy;
+#if MYNEWT_VAL(BLE_LL_CONN_STRICT_SCHED)
+    uint16_t css_slot_idx = 0;
+#endif
+    int rc;
+
+    /* validate length */
+    if (len < sizeof(*cmd) +
+              __builtin_popcount(cmd->init_phy_mask) * sizeof(*params)) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
 
     /* If we are already creating a connection we should leave */
-    if (g_ble_ll_conn_create_sm) {
+    if (g_ble_ll_conn_create_sm.connsm) {
         return BLE_ERR_CMD_DISALLOWED;
     }
 
@@ -584,149 +773,60 @@ ble_ll_ext_conn_create(const uint8_t *cmdbuf, uint8_t len)
         return BLE_ERR_CMD_DISALLOWED;
     }
 
-    hcc.filter_policy = cmd->filter_policy;
-    if (hcc.filter_policy > BLE_HCI_INITIATOR_FILT_POLICY_MAX) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
+    if (ble_ll_conn_find_by_peer_addr(cmd->peer_addr, cmd->peer_addr_type)) {
+        return BLE_ERR_ACL_CONN_EXISTS;
     }
 
-    hcc.own_addr_type = cmd->own_addr_type;
-    if (hcc.own_addr_type > BLE_HCI_ADV_OWN_ADDR_MAX) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
-    }
-
-    /* Validate peer address type only if no whitelist used */
-    if (hcc.filter_policy == 0) {
-        hcc.peer_addr_type = cmd->peer_addr_type;
-
-        if (hcc.peer_addr_type > BLE_HCI_CONN_PEER_ADDR_MAX) {
-            return BLE_ERR_INV_HCI_CMD_PARMS;
+#if MYNEWT_VAL(BLE_LL_CONN_STRICT_SCHED)
+    if (ble_ll_sched_css_is_enabled()) {
+        css_slot_idx = ble_ll_conn_css_get_next_slot();
+        if (css_slot_idx == BLE_LL_CONN_CSS_NO_SLOT) {
+            return BLE_ERR_MEM_CAPACITY;
         }
-
-        memcpy(hcc.peer_addr, cmd->peer_addr, BLE_DEV_ADDR_LEN);
-    }
-
-    hcc.init_phy_mask = cmd->init_phy_mask;
-    if (hcc.init_phy_mask & ~ble_ll_valid_conn_phy_mask) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
-    }
-
-    if (!(hcc.init_phy_mask & ble_ll_conn_required_phy_mask)) {
-        /* At least one of those need to be set */
-        return BLE_ERR_INV_HCI_CMD_PARMS;
-    }
-
-    if (hcc.init_phy_mask & BLE_PHY_MASK_1M) {
-        if (len < sizeof(*params)) {
-            return BLE_ERR_INV_HCI_CMD_PARMS;
-        }
-        len -= sizeof(*params);
-
-        hcc.params[0].scan_itvl = le16toh(params->scan_itvl);
-        hcc.params[0].scan_window = le16toh(params->scan_window);
-
-        rc = ble_ll_conn_hci_chk_scan_params(hcc.params[0].scan_itvl,
-                                             hcc.params[0].scan_window);
-        if (rc) {
-            return rc;
-        }
-
-        hcc.params[0].conn_itvl_min = le16toh(params->conn_min_itvl);
-        hcc.params[0].conn_itvl_max = le16toh(params->conn_min_itvl);
-        hcc.params[0].conn_latency = le16toh(params->conn_latency);
-        hcc.params[0].supervision_timeout = le16toh(params->supervision_timeout);
-
-        rc = ble_ll_conn_hci_chk_conn_params(hcc.params[0].conn_itvl_min,
-                                             hcc.params[0].conn_itvl_max,
-                                             hcc.params[0].conn_latency,
-                                             hcc.params[0].supervision_timeout);
-        if (rc) {
-            return rc;
-        }
-
-        /* Min/max connection event lengths */
-        hcc.params[0].min_ce_len = le16toh(params->min_ce);
-        hcc.params[0].max_ce_len = le16toh(params->max_ce);
-        if (hcc.params[0].min_ce_len > hcc.params[0].max_ce_len) {
-            return BLE_ERR_INV_HCI_CMD_PARMS;
-        }
-
-        fallback_params = &hcc.params[0];
-        params++;
-    }
-
-#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_2M_PHY)
-    if (hcc.init_phy_mask & BLE_PHY_MASK_2M) {
-        if (len < sizeof(*params)) {
-            return BLE_ERR_INV_HCI_CMD_PARMS;
-        }
-        len -= sizeof(*params);
-
-        hcc.params[1].conn_itvl_min = le16toh(params->conn_min_itvl);
-        hcc.params[1].conn_itvl_max = le16toh(params->conn_min_itvl);
-        hcc.params[1].conn_latency = le16toh(params->conn_latency);
-        hcc.params[1].supervision_timeout = le16toh(params->supervision_timeout);
-
-        rc = ble_ll_conn_hci_chk_conn_params(hcc.params[1].conn_itvl_min,
-                                             hcc.params[1].conn_itvl_max,
-                                             hcc.params[1].conn_latency,
-                                             hcc.params[1].supervision_timeout);
-        if (rc) {
-            return rc;
-        }
-
-        /* Min/max connection event lengths */
-        hcc.params[1].min_ce_len = le16toh(params->min_ce);
-        hcc.params[1].max_ce_len = le16toh(params->max_ce);
-        if (hcc.params[1].min_ce_len > hcc.params[1].max_ce_len) {
-            return BLE_ERR_INV_HCI_CMD_PARMS;
-        }
-
-        params++;
     }
 #endif
 
-#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_CODED_PHY)
-    if (hcc.init_phy_mask & BLE_PHY_MASK_CODED) {
-        if (len < sizeof(*params)) {
-            return BLE_ERR_INV_HCI_CMD_PARMS;
+    cc_scan.own_addr_type = cmd->own_addr_type;
+    cc_scan.filter_policy = cmd->filter_policy;
+    if (cc_scan.filter_policy == 0) {
+        cc_scan.peer_addr_type = cmd->peer_addr_type;
+        memcpy(cc_scan.peer_addr, cmd->peer_addr, BLE_DEV_ADDR_LEN);
+    } else {
+        cc_scan.peer_addr_type = 0;
+        memset(cc_scan.peer_addr, 0, BLE_DEV_ADDR_LEN);
+    }
+    cc_scan.init_phy_mask = cmd->init_phy_mask;
+
+    rc = ble_ll_conn_hci_create_check_scan(&cc_scan);
+    if (rc) {
+        return rc;
+    }
+
+    cc_params_fb = NULL;
+
+    for (unsigned int i = 0; i < ARRAY_SIZE(init_phys); i++) {
+        init_phy = &init_phys[i];
+
+        if ((cc_scan.init_phy_mask & init_phy->mask) == 0) {
+            continue;
         }
-        len -= sizeof(*params);
 
-        hcc.params[2].scan_itvl = le16toh(params->scan_itvl);
-        hcc.params[2].scan_window = le16toh(params->scan_window);
+        cc_params = &g_ble_ll_conn_create_sm.params[init_phy->idx];
 
-        rc = ble_ll_conn_hci_chk_scan_params(hcc.params[2].scan_itvl,
-                                             hcc.params[2].scan_window);
+        rc = ble_ll_conn_hci_ext_create_parse_params(params, init_phy->phy,
+                                                     &cc_scan, cc_params);
         if (rc) {
             return rc;
         }
 
-        hcc.params[2].conn_itvl_min = le16toh(params->conn_min_itvl);
-        hcc.params[2].conn_itvl_max = le16toh(params->conn_min_itvl);
-        hcc.params[2].conn_latency = le16toh(params->conn_latency);
-        hcc.params[2].supervision_timeout = le16toh(params->supervision_timeout);
-
-        rc = ble_ll_conn_hci_chk_conn_params(hcc.params[2].conn_itvl_min,
-                                             hcc.params[2].conn_itvl_max,
-                                             hcc.params[2].conn_latency,
-                                             hcc.params[2].supervision_timeout);
-        if (rc) {
-            return rc;
-        }
-
-        /* Min/max connection event lengths */
-        hcc.params[2].min_ce_len = le16toh(params->min_ce);
-        hcc.params[2].max_ce_len = le16toh(params->max_ce);
-        if (hcc.params[2].min_ce_len > hcc.params[2].max_ce_len) {
-            return BLE_ERR_INV_HCI_CMD_PARMS;
-        }
-
-        if (!fallback_params) {
-            fallback_params = &hcc.params[2];
+        if (!cc_params_fb) {
+            cc_params_fb = cc_params;
         }
         params++;
     }
-#endif
+
+    ble_ll_conn_hci_ext_create_set_fb_params(cc_scan.init_phy_mask,
+                                             cc_params_fb);
 
     /* Make sure we can allocate an event to send the connection complete */
     if (ble_ll_init_alloc_conn_comp_ev()) {
@@ -739,22 +839,26 @@ ble_ll_ext_conn_create(const uint8_t *cmdbuf, uint8_t len)
         return BLE_ERR_CONN_LIMIT;
     }
 
-    ble_ll_conn_hcc_params_set_fallback(&hcc, fallback_params);
+#if MYNEWT_VAL(BLE_LL_CONN_STRICT_SCHED)
+    connsm->css_slot_idx = css_slot_idx;
+    connsm->css_slot_idx_pending = BLE_LL_CONN_CSS_NO_SLOT;
+#endif
 
-    /* Initialize state machine in master role and start state machine */
-    ble_ll_conn_ext_master_init(connsm, &hcc);
+    /* Initialize state machine in central role and start state machine */
+    ble_ll_conn_central_init(connsm, &cc_scan,
+                             &g_ble_ll_conn_create_sm.params[0]);
     ble_ll_conn_sm_new(connsm);
 
-    /* CSA will be selected when advertising is received */
-
     /* Start scanning */
-    rc = ble_ll_scan_ext_initiator_start(&hcc, &connsm->scansm);
+    rc = ble_ll_scan_initiator_start(connsm, 1, &cc_scan);
     if (rc) {
         SLIST_REMOVE(&g_ble_ll_conn_active_list,connsm,ble_ll_conn_sm,act_sle);
         STAILQ_INSERT_TAIL(&g_ble_ll_conn_free_list, connsm, free_stqe);
-    } else {
-        /* Set the connection state machine we are trying to create. */
-        g_ble_ll_conn_create_sm = connsm;
+#if MYNEWT_VAL(BLE_LL_CONN_STRICT_SCHED)
+        if (ble_ll_sched_css_is_enabled()) {
+            SLIST_REMOVE(&g_ble_ll_conn_css_list, connsm, ble_ll_conn_sm, css_sle);
+        }
+#endif
     }
 
     return rc;
@@ -812,13 +916,13 @@ ble_ll_conn_hci_read_rem_features(const uint8_t *cmdbuf, uint8_t len)
     }
 
     /* If no connection handle exit with error */
-    connsm = ble_ll_conn_find_active_conn(le16toh(cmd->conn_handle));
+    connsm = ble_ll_conn_find_by_handle(le16toh(cmd->conn_handle));
     if (!connsm) {
         return BLE_ERR_UNK_CONN_ID;
     }
 
     /* If already pending exit with error */
-    if (connsm->csmflags.cfbit.pending_hci_rd_features) {
+    if (connsm->flags.features_host_req) {
         return BLE_ERR_CMD_DISALLOWED;
     }
 
@@ -826,19 +930,49 @@ ble_ll_conn_hci_read_rem_features(const uint8_t *cmdbuf, uint8_t len)
      * Start control procedure if we did not receive peer's features and did not
      * start procedure already.
      */
-    if (!connsm->csmflags.cfbit.rxd_features &&
-                !IS_PENDING_CTRL_PROC(connsm, BLE_LL_CTRL_PROC_FEATURE_XCHG)) {
-        if ((connsm->conn_role == BLE_LL_CONN_ROLE_SLAVE) &&
-            !(ble_ll_read_supp_features() & BLE_LL_FEAT_SLAVE_INIT)) {
+    if (!connsm->flags.features_rxd &&
+        !IS_PENDING_CTRL_PROC(connsm, BLE_LL_CTRL_PROC_FEATURE_XCHG)) {
+#if MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL)
+        if ((connsm->conn_role == BLE_LL_CONN_ROLE_PERIPHERAL) &&
+            !(ble_ll_read_supp_features() & BLE_LL_FEAT_PERIPH_INIT)) {
                 return BLE_ERR_CMD_DISALLOWED;
         }
+#endif
 
-        ble_ll_ctrl_proc_start(connsm, BLE_LL_CTRL_PROC_FEATURE_XCHG);
+        ble_ll_ctrl_proc_start(connsm, BLE_LL_CTRL_PROC_FEATURE_XCHG, NULL);
     }
 
-    connsm->csmflags.cfbit.pending_hci_rd_features = 1;
+    connsm->flags.features_host_req = 1;
 
     return BLE_ERR_SUCCESS;
+}
+
+static bool
+ble_ll_conn_params_in_range(struct ble_ll_conn_sm *connsm,
+                            const struct ble_hci_le_conn_update_cp *cmd)
+{
+    if (!IN_RANGE(connsm->conn_itvl, le16toh(cmd->conn_itvl_min),
+                  le16toh(cmd->conn_itvl_max))) {
+        return false;
+    }
+
+    if (connsm->periph_latency != le16toh(cmd->conn_latency)) {
+        return false;
+    }
+
+    if (connsm->supervision_tmo != le16toh(cmd->supervision_timeout)) {
+        return false;
+    }
+
+    return true;
+}
+
+static void
+ble_ll_conn_hci_update_complete_event(void *user_data)
+{
+    struct ble_ll_conn_sm *connsm = user_data;
+
+    ble_ll_hci_ev_conn_update(connsm, BLE_ERR_SUCCESS);
 }
 
 /**
@@ -857,9 +991,10 @@ ble_ll_conn_hci_update(const uint8_t *cmdbuf, uint8_t len)
     uint16_t handle;
     struct ble_ll_conn_sm *connsm;
     struct hci_conn_update *hcu;
+    uint16_t max_ce_len;
 
     /*
-     * XXX: must deal with slave not supporting this feature and using
+     * XXX: must deal with peripheral not supporting this feature and using
      * conn update! Right now, we only check if WE support the connection
      * parameters request procedure. We dont check if the remote does.
      * We should also be able to deal with sending the parameter request,
@@ -869,10 +1004,40 @@ ble_ll_conn_hci_update(const uint8_t *cmdbuf, uint8_t len)
 
     /* If no connection handle exit with error */
     handle = le16toh(cmd->conn_handle);
-    connsm = ble_ll_conn_find_active_conn(handle);
+    connsm = ble_ll_conn_find_by_handle(handle);
     if (!connsm) {
         return BLE_ERR_UNK_CONN_ID;
     }
+
+    /* if current connection parameters fit updated values we don't have to
+     * trigger LL procedure and just update local values (Min/Max CE Length)
+     *
+     * Note that this is also allowed for CSS as nothing changes WRT connections
+     * scheduling.
+     */
+    if (ble_ll_conn_params_in_range(connsm, cmd)) {
+        max_ce_len = le16toh(cmd->max_ce_len);
+
+        if (le16toh(cmd->min_ce_len) > max_ce_len) {
+            return BLE_ERR_INV_HCI_CMD_PARMS;
+        }
+
+        connsm->max_ce_len_ticks = ble_ll_tmr_u2t_up(max_ce_len * BLE_LL_CONN_CE_USECS);
+
+        ble_ll_hci_post_cmd_cb_set(ble_ll_conn_hci_update_complete_event, connsm);
+
+        return BLE_ERR_SUCCESS;
+    }
+
+#if MYNEWT_VAL(BLE_LL_CONN_STRICT_SCHED)
+    /* Do not allow connection update if css in enabled, we only allow to move
+     * anchor point (i.e. change slot) via dedicated HCI command.
+     */
+    if (ble_ll_sched_css_is_enabled() &&
+        connsm->conn_role == BLE_LL_CONN_ROLE_CENTRAL) {
+        return BLE_ERR_CMD_DISALLOWED;
+    }
+#endif
 
     /* Better not have this procedure ongoing! */
     if (IS_PENDING_CTRL_PROC(connsm, BLE_LL_CTRL_PROC_CONN_PARAM_REQ) ||
@@ -882,41 +1047,55 @@ ble_ll_conn_hci_update(const uint8_t *cmdbuf, uint8_t len)
 
     /* See if this feature is supported on both sides */
     if ((connsm->conn_features & BLE_LL_FEAT_CONN_PARM_REQ) == 0) {
-        if (connsm->conn_role == BLE_LL_CONN_ROLE_SLAVE) {
+#if MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL)
+        if (connsm->conn_role == BLE_LL_CONN_ROLE_PERIPHERAL) {
             return BLE_ERR_UNSUPP_REM_FEATURE;
         }
+#endif
         ctrl_proc = BLE_LL_CTRL_PROC_CONN_UPDATE;
     } else {
         ctrl_proc = BLE_LL_CTRL_PROC_CONN_PARAM_REQ;
     }
 
     /*
-     * If we are a slave and the master has initiated the procedure already
-     * we should deny the slave request for now. If we are a master and the
-     * slave has initiated the procedure, we need to send a reject to the
-     * slave.
+     * If we are a peripheral and the central has initiated the procedure already
+     * we should deny the peripheral request for now. If we are a central and the
+     * peripheral has initiated the procedure, we need to send a reject to the
+     * peripheral.
      */
-    if (connsm->csmflags.cfbit.awaiting_host_reply) {
-        if (connsm->conn_role == BLE_LL_CONN_ROLE_SLAVE) {
-            return BLE_ERR_LMP_COLLISION;
-        } else {
-            connsm->csmflags.cfbit.awaiting_host_reply = 0;
+    if (connsm->flags.conn_update_host_w4reply) {
+        switch (connsm->conn_role) {
+#if MYNEWT_VAL(BLE_LL_ROLE_CENTRAL)
+        case BLE_LL_CONN_ROLE_CENTRAL:
+            connsm->flags.conn_update_host_w4reply = 0;
 
             /* XXX: If this fails no reject ind will be sent! */
             ble_ll_ctrl_reject_ind_send(connsm, connsm->host_reply_opcode,
                                         BLE_ERR_LMP_COLLISION);
+            break;
+#endif
+#if MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL)
+        case BLE_LL_CONN_ROLE_PERIPHERAL:
+            return BLE_ERR_LMP_COLLISION;
+        break;
+#endif
+        default:
+            BLE_LL_ASSERT(0);
+            break;
         }
     }
 
     /*
-     * If we are a slave and the master has initiated the channel map
-     * update procedure we should deny the slave request for now.
+     * If we are a peripheral and the central has initiated the channel map
+     * update procedure we should deny the peripheral request for now.
      */
-    if (connsm->csmflags.cfbit.chanmap_update_scheduled) {
-        if (connsm->conn_role == BLE_LL_CONN_ROLE_SLAVE) {
+#if MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL)
+    if (connsm->flags.chanmap_update_sched) {
+        if (connsm->conn_role == BLE_LL_CONN_ROLE_PERIPHERAL) {
             return BLE_ERR_DIFF_TRANS_COLL;
         }
     }
+#endif
 
     /* Retrieve command data */
     hcu = &connsm->conn_param_req;
@@ -939,7 +1118,7 @@ ble_ll_conn_hci_update(const uint8_t *cmdbuf, uint8_t len)
         hcu->handle = handle;
 
         /* Start the control procedure */
-        ble_ll_ctrl_proc_start(connsm, ctrl_proc);
+        ble_ll_ctrl_proc_start(connsm, ctrl_proc, NULL);
     }
 
     return rc;
@@ -971,7 +1150,7 @@ ble_ll_conn_hci_param_rr(const uint8_t *cmdbuf, uint8_t len,
     }
 
     /* If we dont have a handle we cant do anything */
-    connsm = ble_ll_conn_find_active_conn(handle);
+    connsm = ble_ll_conn_find_by_handle(handle);
     if (!connsm) {
         rc = BLE_ERR_UNK_CONN_ID;
         goto done;
@@ -981,7 +1160,7 @@ ble_ll_conn_hci_param_rr(const uint8_t *cmdbuf, uint8_t len,
     rc = ble_ll_conn_process_conn_params(cmd, connsm);
 
     /* The connection should be awaiting a reply. If not, just discard */
-    if (connsm->csmflags.cfbit.awaiting_host_reply) {
+    if (connsm->flags.conn_update_host_w4reply) {
         /* Get a control packet buffer */
         if (rc == BLE_ERR_SUCCESS) {
             om = os_msys_get_pkthdr(BLE_LL_CTRL_MAX_PDU_LEN,
@@ -999,7 +1178,7 @@ ble_ll_conn_hci_param_rr(const uint8_t *cmdbuf, uint8_t len,
             ble_ll_ctrl_reject_ind_send(connsm, connsm->host_reply_opcode,
                                         BLE_ERR_CONN_PARMS);
         }
-        connsm->csmflags.cfbit.awaiting_host_reply = 0;
+        connsm->flags.conn_update_host_w4reply = 0;
 
         /* XXX: if we cant get a buffer, what do we do? We need to remember
          * reason if it was a negative reply. We also would need to have
@@ -1037,7 +1216,7 @@ ble_ll_conn_hci_param_nrr(const uint8_t *cmdbuf, uint8_t len,
     }
 
     /* If we dont have a handle we cant do anything */
-    connsm = ble_ll_conn_find_active_conn(handle);
+    connsm = ble_ll_conn_find_by_handle(handle);
     if (!connsm) {
         rc = BLE_ERR_UNK_CONN_ID;
         goto done;
@@ -1046,11 +1225,11 @@ ble_ll_conn_hci_param_nrr(const uint8_t *cmdbuf, uint8_t len,
     rc = BLE_ERR_SUCCESS;
 
     /* The connection should be awaiting a reply. If not, just discard */
-    if (connsm->csmflags.cfbit.awaiting_host_reply) {
+    if (connsm->flags.conn_update_host_w4reply) {
         /* XXX: check return code and deal */
         ble_ll_ctrl_reject_ind_send(connsm, connsm->host_reply_opcode,
                                     cmd->reason);
-        connsm->csmflags.cfbit.awaiting_host_reply = 0;
+        connsm->flags.conn_update_host_w4reply = 0;
 
         /* XXX: if we cant get a buffer, what do we do? We need to remember
          * reason if it was a negative reply. We also would need to have
@@ -1069,7 +1248,7 @@ done:
  * safe to use g_ble_ll_conn_comp_ev
  */
 static void
-ble_ll_conn_hci_cancel_conn_complete_event(void)
+ble_ll_conn_hci_cancel_conn_complete_event(void *user_data)
 {
     BLE_LL_ASSERT(g_ble_ll_conn_comp_ev);
 
@@ -1087,7 +1266,7 @@ ble_ll_conn_hci_cancel_conn_complete_event(void)
  * @return int
  */
 int
-ble_ll_conn_create_cancel(ble_ll_hci_post_cmd_complete_cb *post_cmd_cb)
+ble_ll_conn_create_cancel(void)
 {
     int rc;
     struct ble_ll_conn_sm *connsm;
@@ -1100,14 +1279,14 @@ ble_ll_conn_create_cancel(ble_ll_hci_post_cmd_complete_cb *post_cmd_cb)
      * return disallowed as well
      */
     OS_ENTER_CRITICAL(sr);
-    connsm = g_ble_ll_conn_create_sm;
+    connsm = g_ble_ll_conn_create_sm.connsm;
     if (connsm && (connsm->conn_state == BLE_LL_CONN_STATE_IDLE)) {
         /* stop scanning and end the connection event */
-        g_ble_ll_conn_create_sm = NULL;
+        g_ble_ll_conn_create_sm.connsm = NULL;
         ble_ll_scan_sm_stop(1);
         ble_ll_conn_end(connsm, BLE_ERR_UNK_CONN_ID);
 
-        *post_cmd_cb = ble_ll_conn_hci_cancel_conn_complete_event;
+        ble_ll_hci_post_cmd_cb_set(ble_ll_conn_hci_cancel_conn_complete_event, NULL);
 
         rc = BLE_ERR_SUCCESS;
     } else {
@@ -1149,14 +1328,14 @@ ble_ll_conn_hci_disconnect_cmd(const struct ble_hci_lc_disconnect_cp *cmd)
         case BLE_ERR_UNSUPP_REM_FEATURE:
         case BLE_ERR_UNIT_KEY_PAIRING:
         case BLE_ERR_CONN_PARMS:
-            connsm = ble_ll_conn_find_active_conn(handle);
+            connsm = ble_ll_conn_find_by_handle(handle);
             if (connsm) {
                 /* Do not allow command if we are in process of disconnecting */
                 if (connsm->disconnect_reason) {
                     rc = BLE_ERR_CMD_DISALLOWED;
                 } else {
                     /* This control procedure better not be pending! */
-                    BLE_LL_ASSERT(CONN_F_TERMINATE_STARTED(connsm) == 0);
+                    BLE_LL_ASSERT(connsm->flags.terminate_started == 0);
 
                     /* Record the disconnect reason */
                     connsm->disconnect_reason = cmd->reason;
@@ -1198,7 +1377,7 @@ ble_ll_conn_hci_rd_rem_ver_cmd(const uint8_t *cmdbuf, uint8_t len)
     }
 
     /* Check for valid parameters */
-    connsm = ble_ll_conn_find_active_conn(le16toh(cmd->conn_handle));
+    connsm = ble_ll_conn_find_by_handle(le16toh(cmd->conn_handle));
     if (!connsm) {
         return BLE_ERR_UNK_CONN_ID;
     }
@@ -1215,8 +1394,8 @@ ble_ll_conn_hci_rd_rem_ver_cmd(const uint8_t *cmdbuf, uint8_t len)
      * NOTE: we cant just send the event here. That would cause the event to
      * be queued before the command status.
      */
-    if (!connsm->csmflags.cfbit.version_ind_sent) {
-        ble_ll_ctrl_proc_start(connsm, BLE_LL_CTRL_PROC_VERSION_XCHG);
+    if (!connsm->flags.version_ind_txd) {
+        ble_ll_ctrl_proc_start(connsm, BLE_LL_CTRL_PROC_VERSION_XCHG, NULL);
     } else {
         connsm->pending_ctrl_procs |= (1 << BLE_LL_CTRL_PROC_VERSION_XCHG);
     }
@@ -1248,7 +1427,7 @@ ble_ll_conn_hci_rd_rssi(const uint8_t *cmdbuf, uint8_t len, uint8_t *rspbuf, uin
 
     rsp->handle = cmd->handle;
 
-    connsm = ble_ll_conn_find_active_conn(le16toh(cmd->handle));
+    connsm = ble_ll_conn_find_by_handle(le16toh(cmd->handle));
     if (!connsm) {
         rsp->rssi = 127;
         rc = BLE_ERR_UNK_CONN_ID;
@@ -1285,15 +1464,15 @@ ble_ll_conn_hci_rd_chan_map(const uint8_t *cmdbuf, uint8_t len,
     }
 
     handle = le16toh(cmd->conn_handle);
-    connsm = ble_ll_conn_find_active_conn(handle);
+    connsm = ble_ll_conn_find_by_handle(handle);
     if (!connsm) {
         rc = BLE_ERR_UNK_CONN_ID;
         memset(rsp->chan_map, 0, sizeof(rsp->chan_map));
     } else {
-        if (connsm->csmflags.cfbit.chanmap_update_scheduled) {
-            memcpy(rsp->chan_map, connsm->req_chanmap, BLE_LL_CONN_CHMAP_LEN);
+        if (connsm->flags.chanmap_update_sched) {
+            memcpy(rsp->chan_map, connsm->req_chanmap, BLE_LL_CHAN_MAP_LEN);
         } else {
-            memcpy(rsp->chan_map, connsm->chanmap, BLE_LL_CONN_CHMAP_LEN);
+            memcpy(rsp->chan_map, connsm->chan_map, BLE_LL_CHAN_MAP_LEN);
         }
         rc = BLE_ERR_SUCCESS;
     }
@@ -1303,38 +1482,9 @@ ble_ll_conn_hci_rd_chan_map(const uint8_t *cmdbuf, uint8_t len,
     *rsplen = sizeof(*rsp);
     return rc;
 }
+#endif
 
-/**
- * Called when the host issues the LE command "set host channel classification"
- *
- * @param cmdbuf
- *
- * @return int
- */
-int
-ble_ll_conn_hci_set_chan_class(const uint8_t *cmdbuf, uint8_t len)
-{
-    const struct ble_hci_le_set_host_chan_class_cp *cmd = (const void *) cmdbuf;
-    uint8_t num_used_chans;
-
-    if (len != sizeof(*cmd)) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
-    }
-
-    /*
-     * The HCI command states that the host is allowed to mask in just one
-     * channel but the Link Layer needs minimum two channels to operate. So
-     * I will not allow this command if there are less than 2 channels masked.
-     */
-    num_used_chans = ble_ll_utils_calc_num_used_chans(cmd->chan_map);
-    if ((num_used_chans < 2) || ((cmd->chan_map[4] & 0xe0) != 0)) {
-        return BLE_ERR_INV_HCI_CMD_PARMS;
-    }
-
-    /* Set the host channel mask */
-    ble_ll_conn_set_global_chanmap(num_used_chans, cmd->chan_map);
-    return BLE_ERR_SUCCESS;
-}
+#if MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL) || MYNEWT_VAL(BLE_LL_ROLE_CENTRAL)
 
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_DATA_LEN_EXT)
 int
@@ -1345,8 +1495,8 @@ ble_ll_conn_hci_set_data_len(const uint8_t *cmdbuf, uint8_t len,
     struct ble_hci_le_set_data_len_rp *rsp = (void *) rspbuf;
     int rc;
     uint16_t handle;
-    uint16_t txoctets;
-    uint16_t txtime;
+    uint16_t tx_octets;
+    uint16_t tx_time;
     struct ble_ll_conn_sm *connsm;
 
     if (len != sizeof(*cmd)) {
@@ -1355,48 +1505,25 @@ ble_ll_conn_hci_set_data_len(const uint8_t *cmdbuf, uint8_t len,
 
     /* Find connection */
     handle = le16toh(cmd->conn_handle);
-    connsm = ble_ll_conn_find_active_conn(handle);
+    connsm = ble_ll_conn_find_by_handle(handle);
     if (!connsm) {
         rc = BLE_ERR_UNK_CONN_ID;
         goto done;
     }
 
-    txoctets = le16toh(cmd->tx_octets);
-    txtime = le16toh(cmd->tx_time);
+    tx_octets = le16toh(cmd->tx_octets);
+    tx_time = le16toh(cmd->tx_time);
 
-    /* Make sure it is valid */
-    if (!ble_ll_chk_txrx_octets(txoctets) ||
-        !ble_ll_chk_txrx_time(txtime)) {
-        rc = BLE_ERR_INV_HCI_CMD_PARMS;
-        goto done;
+    if (!ble_ll_hci_check_dle(tx_octets, tx_time)) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
-#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_CODED_PHY)
-    /*
-     * Keep original value requested by host since we may want to recalculate
-     * MaxTxTime after PHY changes between coded and uncoded.
-     */
-    connsm->host_req_max_tx_time = txtime;
-
-    /* If peer does not support coded, we cannot use value larger than 2120us */
-    if (!(connsm->remote_features[0] & (BLE_LL_FEAT_LE_CODED_PHY >> 8))) {
-        txtime = min(txtime, BLE_LL_CONN_SUPP_TIME_MAX_UNCODED);
-    }
-#endif
-
-    rc = BLE_ERR_SUCCESS;
-    if (connsm->max_tx_time != txtime ||
-        connsm->max_tx_octets != txoctets) {
-
-        connsm->max_tx_time = txtime;
-        connsm->max_tx_octets = txoctets;
-
-        ble_ll_ctrl_initiate_dle(connsm);
-    }
+    rc = ble_ll_conn_set_data_len(connsm, tx_octets, tx_time, 0, 0);
 
 done:
     rsp->conn_handle = htole16(handle);
     *rsplen = sizeof(*rsp);
+
     return rc;
 }
 #endif
@@ -1420,11 +1547,13 @@ ble_ll_conn_hci_le_start_encrypt(const uint8_t *cmdbuf, uint8_t len)
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
-    connsm = ble_ll_conn_find_active_conn(le16toh(cmd->conn_handle));
+    connsm = ble_ll_conn_find_by_handle(le16toh(cmd->conn_handle));
     if (!connsm) {
         rc = BLE_ERR_UNK_CONN_ID;
-    } else if (connsm->conn_role == BLE_LL_CONN_ROLE_SLAVE) {
+#if MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL)
+    } else if (connsm->conn_role == BLE_LL_CONN_ROLE_PERIPHERAL) {
         rc = BLE_ERR_UNSPECIFIED;
+#endif
     } else if (connsm->cur_ctrl_proc == BLE_LL_CTRL_PROC_ENCRYPT) {
         /*
          * The specification does not say what to do here but the host should
@@ -1437,7 +1566,7 @@ ble_ll_conn_hci_le_start_encrypt(const uint8_t *cmdbuf, uint8_t len)
         connsm->enc_data.host_rand_num = le64toh(cmd->rand);
         connsm->enc_data.enc_div = le16toh(cmd->div);
         swap_buf(connsm->enc_data.enc_block.key, cmd->ltk, 16);
-        ble_ll_ctrl_proc_start(connsm, BLE_LL_CTRL_PROC_ENCRYPT);
+        ble_ll_ctrl_proc_start(connsm, BLE_LL_CTRL_PROC_ENCRYPT, NULL);
         rc = BLE_ERR_SUCCESS;
     }
 
@@ -1471,17 +1600,19 @@ ble_ll_conn_hci_le_ltk_reply(const uint8_t *cmdbuf, uint8_t len,
 
     /* Find connection handle */
     handle = le16toh(cmd->conn_handle);
-    connsm = ble_ll_conn_find_active_conn(handle);
+    connsm = ble_ll_conn_find_by_handle(handle);
     if (!connsm) {
         rc = BLE_ERR_UNK_CONN_ID;
         goto ltk_key_cmd_complete;
     }
 
-    /* Should never get this if we are a master! */
-    if (connsm->conn_role == BLE_LL_CONN_ROLE_MASTER) {
+#if MYNEWT_VAL(BLE_LL_ROLE_CENTRAL)
+    /* Should never get this if we are a central! */
+    if (connsm->conn_role == BLE_LL_CONN_ROLE_CENTRAL) {
         rc = BLE_ERR_UNSPECIFIED;
         goto ltk_key_cmd_complete;
     }
+#endif
 
     /* The connection should be awaiting a reply. If not, just discard */
     if (connsm->enc_data.enc_state != CONN_ENC_S_LTK_REQ_WAIT) {
@@ -1528,17 +1659,19 @@ ble_ll_conn_hci_le_ltk_neg_reply(const uint8_t *cmdbuf, uint8_t len,
 
     /* Find connection handle */
     handle = le16toh(cmd->conn_handle);
-    connsm = ble_ll_conn_find_active_conn(handle);
+    connsm = ble_ll_conn_find_by_handle(handle);
     if (!connsm) {
         rc = BLE_ERR_UNK_CONN_ID;
         goto ltk_key_cmd_complete;
     }
 
-    /* Should never get this if we are a master! */
-    if (connsm->conn_role == BLE_LL_CONN_ROLE_MASTER) {
+#if MYNEWT_VAL(BLE_LL_ROLE_CENTRAL)
+    /* Should never get this if we are a central! */
+    if (connsm->conn_role == BLE_LL_CONN_ROLE_CENTRAL) {
         rc = BLE_ERR_UNSPECIFIED;
         goto ltk_key_cmd_complete;
     }
+#endif
 
     /* The connection should be awaiting a reply. If not, just discard */
     if (connsm->enc_data.enc_state != CONN_ENC_S_LTK_REQ_WAIT) {
@@ -1569,12 +1702,12 @@ ble_ll_conn_req_peer_sca(const uint8_t *cmdbuf, uint8_t len,
     const struct ble_hci_le_request_peer_sca_cp *params = (const void *)cmdbuf;
     struct ble_ll_conn_sm *connsm;
 
-    connsm = ble_ll_conn_find_active_conn(params->conn_handle);
+    connsm = ble_ll_conn_find_by_handle(le16toh(params->conn_handle));
     if (!connsm) {
         return BLE_ERR_UNK_CONN_ID;
     }
 
-    if (!(connsm->remote_features[2] & (BLE_LL_FEAT_SCA_UPDATE >> 24))) {
+    if (!ble_ll_conn_rem_feature_check(connsm, BLE_LL_FEAT_SCA_UPDATE)) {
         return BLE_ERR_UNSUPP_REM_FEATURE;
     }
 
@@ -1583,7 +1716,103 @@ ble_ll_conn_req_peer_sca(const uint8_t *cmdbuf, uint8_t len,
         return BLE_ERR_CTLR_BUSY;
     }
 
-    ble_ll_ctrl_proc_start(connsm, BLE_LL_CTRL_PROC_SCA_UPDATE);
+    ble_ll_ctrl_proc_start(connsm, BLE_LL_CTRL_PROC_SCA_UPDATE, NULL);
+
+    return 0;
+}
+#endif
+
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_ENHANCED_CONN_UPDATE)
+int
+ble_ll_conn_hci_set_default_subrate(const uint8_t *cmdbuf, uint8_t len,
+                                    uint8_t *rspbuf, uint8_t *rsplen)
+{
+    const struct ble_hci_le_set_default_subrate_cp *cp = (const void *)cmdbuf;
+    struct ble_ll_conn_global_params *gcp = &g_ble_ll_conn_params;
+    uint16_t subrate_min;
+    uint16_t subrate_max;
+    uint16_t max_latency;
+    uint16_t cont_num;
+    uint16_t supervision_tmo;
+
+    subrate_min = le16toh(cp->subrate_min);
+    subrate_max = le16toh(cp->subrate_max);
+    max_latency = le16toh(cp->max_latency);
+    cont_num = le16toh(cp->cont_num);
+    supervision_tmo = le16toh(cp->supervision_tmo);
+
+    if ((subrate_min < 0x0001) || (subrate_min > 0x01f4) ||
+        (subrate_max < 0x0001) || (subrate_max > 0x01f4) ||
+        (max_latency > 0x01f3) || (cont_num > 0x01f3) ||
+        (supervision_tmo < 0x000a) || (supervision_tmo > 0x0c80)) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+    if (subrate_max * (max_latency + 1) > 500) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+    if (subrate_max < subrate_min) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+    if (cont_num >= subrate_max) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
+    }
+
+    gcp->acc_subrate_min = subrate_min;
+    gcp->acc_subrate_max = subrate_max;
+    gcp->acc_max_latency = max_latency;
+    gcp->acc_cont_num = cont_num;
+    gcp->acc_supervision_tmo = supervision_tmo;
+
+    return 0;
+}
+
+int
+ble_ll_conn_hci_subrate_req(const uint8_t *cmdbuf, uint8_t len,
+                            uint8_t *rspbuf, uint8_t *rsplen)
+{
+    const struct ble_hci_le_subrate_req_cp *cp = (const void *)cmdbuf;
+    struct ble_ll_conn_subrate_req_params srp;
+    struct ble_ll_conn_sm *connsm;
+    uint16_t conn_handle;
+    int rc;
+
+    conn_handle = le16toh(cp->conn_handle);
+    srp.subrate_min = le16toh(cp->subrate_min);
+    srp.subrate_max = le16toh(cp->subrate_max);
+    srp.max_latency = le16toh(cp->max_latency);
+    srp.cont_num = le16toh(cp->cont_num);
+    srp.supervision_tmo = le16toh(cp->supervision_tmo);
+
+    connsm = ble_ll_conn_find_by_handle(conn_handle);
+    if (!connsm) {
+        return BLE_ERR_UNK_CONN_ID;
+    }
+
+    rc = ble_ll_conn_subrate_req_hci(connsm, &srp);
+    if (rc < 0) {
+        if (rc == -EINVAL) {
+            return BLE_ERR_INV_HCI_CMD_PARMS;
+        } else if (rc == -EBUSY) {
+            return BLE_ERR_CTLR_BUSY;
+        } else if (rc == -ENOTSUP) {
+            return BLE_ERR_UNSUPP_REM_FEATURE;
+        } else {
+            return BLE_ERR_UNSPECIFIED;
+        }
+    }
+
+#if MYNEWT_VAL(BLE_LL_ROLE_CENTRAL)
+    if (connsm->conn_role == BLE_LL_CONN_ROLE_CENTRAL) {
+        connsm->acc_subrate_min = srp.subrate_min;
+        connsm->acc_subrate_min = srp.subrate_max;
+        connsm->acc_max_latency = srp.max_latency;
+        connsm->acc_cont_num = srp.cont_num;
+        connsm->acc_supervision_tmo = srp.supervision_tmo;
+    }
+#endif
 
     return 0;
 }
@@ -1614,7 +1843,7 @@ ble_ll_conn_hci_rd_auth_pyld_tmo(const uint8_t *cmdbuf, uint8_t len,
     }
 
     handle = le16toh(cmd->conn_handle);
-    connsm = ble_ll_conn_find_active_conn(handle);
+    connsm = ble_ll_conn_find_by_handle(handle);
     if (!connsm) {
         rc = BLE_ERR_UNK_CONN_ID;
         rsp->tmo = 0;
@@ -1657,21 +1886,24 @@ ble_ll_conn_hci_wr_auth_pyld_tmo(const uint8_t *cmdbuf, uint8_t len,
 
     handle = le16toh(cmd->conn_handle);
 
-    connsm = ble_ll_conn_find_active_conn(handle);
+    connsm = ble_ll_conn_find_by_handle(handle);
     if (!connsm) {
         rc = BLE_ERR_UNK_CONN_ID;
     } else {
         /*
          * The timeout is in units of 10 msecs. We need to make sure that the
-         * timeout is greater than or equal to connItvl * (1 + slaveLatency)
+         * timeout is greater than or equal to connItvl * (1 + peripheralLatency)
          */
         tmo = le16toh(cmd->tmo);
         min_tmo = (uint32_t)connsm->conn_itvl * BLE_LL_CONN_ITVL_USECS;
-        min_tmo *= (connsm->slave_latency + 1);
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_ENHANCED_CONN_UPDATE)
+        min_tmo *= connsm->subrate_factor;
+#endif
+        min_tmo *= (connsm->periph_latency + 1);
         min_tmo /= 10000;
 
         if (tmo < min_tmo) {
-            rc = BLE_ERR_INV_HCI_CMD_PARMS;
+            rc = BLE_ERR_CMD_DISALLOWED;
         } else {
             connsm->auth_pyld_tmo = tmo;
             if (ble_npl_callout_is_active(&connsm->auth_pyld_timer)) {
@@ -1710,7 +1942,7 @@ ble_ll_conn_hci_le_rd_phy(const uint8_t *cmdbuf, uint8_t len,
     }
 
     handle = le16toh(cmd->conn_handle);
-    connsm = ble_ll_conn_find_active_conn(handle);
+    connsm = ble_ll_conn_find_by_handle(handle);
     if (!connsm) {
         rsp->tx_phy = 0;
         rsp->rx_phy = 0;
@@ -1750,7 +1982,7 @@ ble_ll_conn_hci_le_set_phy(const uint8_t *cmdbuf, uint8_t len)
     }
 
     handle = le16toh(cmd->conn_handle);
-    connsm = ble_ll_conn_find_active_conn(handle);
+    connsm = ble_ll_conn_find_by_handle(handle);
     if (!connsm) {
         return BLE_ERR_UNK_CONN_ID;
     }
@@ -1759,7 +1991,7 @@ ble_ll_conn_hci_le_set_phy(const uint8_t *cmdbuf, uint8_t len)
      * If host has requested a PHY update and we are not finished do
      * not allow another one
      */
-    if (CONN_F_HOST_PHY_UPDATE(connsm)) {
+    if (connsm->flags.phy_update_host_initiated) {
         return BLE_ERR_CMD_DISALLOWED;
     }
 
@@ -1775,9 +2007,9 @@ ble_ll_conn_hci_le_set_phy(const uint8_t *cmdbuf, uint8_t len)
         goto phy_cmd_param_err;
     }
 
-    connsm->phy_data.phy_options = phy_options & 0x03;
-    connsm->phy_data.host_pref_tx_phys_mask = tx_phys,
-    connsm->phy_data.host_pref_rx_phys_mask = rx_phys;
+    connsm->phy_data.pref_opts = phy_options & 0x03;
+    connsm->phy_data.pref_mask_tx = tx_phys,
+    connsm->phy_data.pref_mask_rx = rx_phys;
 
     /*
      * The host preferences override the default phy preferences. Currently,
@@ -1788,9 +2020,9 @@ ble_ll_conn_hci_le_set_phy(const uint8_t *cmdbuf, uint8_t len)
      */
     if (IS_PENDING_CTRL_PROC(connsm, BLE_LL_CTRL_PROC_PHY_UPDATE)) {
         if (connsm->cur_ctrl_proc != BLE_LL_CTRL_PROC_PHY_UPDATE) {
-            CONN_F_CTRLR_PHY_UPDATE(connsm) = 0;
+            connsm->flags.phy_update_self_initiated = 0;
         }
-        CONN_F_HOST_PHY_UPDATE(connsm) = 1;
+        connsm->flags.phy_update_host_initiated = 1;
     } else {
         /*
          * We could be doing a peer-initiated PHY update procedure. If this
@@ -1798,20 +2030,20 @@ ble_ll_conn_hci_le_set_phy(const uint8_t *cmdbuf, uint8_t len)
          * we are not done with a peer-initiated procedure we just set the
          * pending bit but do not start the control procedure.
          */
-        if (CONN_F_PEER_PHY_UPDATE(connsm)) {
+        if (connsm->flags.phy_update_peer_initiated) {
             connsm->pending_ctrl_procs |= (1 << BLE_LL_CTRL_PROC_PHY_UPDATE);
-            CONN_F_HOST_PHY_UPDATE(connsm) = 1;
+            connsm->flags.phy_update_host_initiated = 1;
         } else {
             /* Check if we should start phy update procedure */
-            if (!ble_ll_conn_chk_phy_upd_start(connsm)) {
-                CONN_F_HOST_PHY_UPDATE(connsm) = 1;
+            if (!ble_ll_conn_phy_update_if_needed(connsm)) {
+                connsm->flags.phy_update_host_initiated = 1;
             } else {
                 /*
                  * Set flag to send a PHY update complete event. We set flag
                  * even if we do not do an update procedure since we have to
                  * inform the host even if we decide not to change anything.
                  */
-                CONN_F_PHY_UPDATE_EVENT(connsm) = 1;
+                connsm->flags.phy_update_host_w4event = 1;
             }
         }
     }
@@ -1838,9 +2070,13 @@ ble_ll_set_sync_transfer_params(const uint8_t *cmdbuf, uint8_t len,
         goto done;
     }
 
-    if (cmd->mode > 0x02) {
-        rc = BLE_ERR_INV_HCI_CMD_PARMS;
-        goto done;
+    if ((MYNEWT_VAL(BLE_VERSION) >= 53 ) && (cmd->mode == 0x03)) {
+        /* We do not support ADI in periodic advertising thus cannot enable
+         * duplicate filtering.
+         */
+        return BLE_ERR_UNSUPPORTED;
+    } else if (cmd->mode > 0x02) {
+        return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
     skip = le16toh(cmd->skip);
@@ -1861,7 +2097,7 @@ ble_ll_set_sync_transfer_params(const uint8_t *cmdbuf, uint8_t len,
         goto done;
     }
 
-    connsm = ble_ll_conn_find_active_conn(le16toh(cmd->conn_handle));
+    connsm = ble_ll_conn_find_by_handle(le16toh(cmd->conn_handle));
     if (!connsm) {
         rc = BLE_ERR_UNK_CONN_ID;
         goto done;
@@ -1891,7 +2127,12 @@ ble_ll_set_default_sync_transfer_params(const uint8_t *cmdbuf, uint8_t len)
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
-    if (cmd->mode > 0x02) {
+    if ((MYNEWT_VAL(BLE_VERSION) >= 53 ) && (cmd->mode == 0x03)) {
+        /* We do not support ADI in periodic advertising thus cannot enable
+         * duplicate filtering.
+         */
+        return BLE_ERR_UNSUPPORTED;
+    } else if (cmd->mode > 0x02) {
         return BLE_ERR_INV_HCI_CMD_PARMS;
     }
 
@@ -1917,5 +2158,6 @@ ble_ll_set_default_sync_transfer_params(const uint8_t *cmdbuf, uint8_t len)
 
     return BLE_ERR_SUCCESS;
 }
+#endif
 #endif
 #endif

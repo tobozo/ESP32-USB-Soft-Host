@@ -23,42 +23,15 @@
 #include <stdio.h>
 #include "nimble/porting/nimble/include/os/os.h"
 #include "nimble/nimble/include/nimble/hci_common.h"
-#include "nimble/nimble/include/nimble/ble_hci_trans.h"
-#include "nimble/nimble/host/include/host/ble_monitor.h"
 #include "ble_hs_priv.h"
-#include "ble_monitor_priv.h"
-#ifdef ESP_PLATFORM
-#  if defined __has_include
-#    if __has_include ("soc/soc_caps.h")
-#      include "soc/soc_caps.h"
-#    endif
-#  endif
-#endif
-
-static int
-ble_hs_hci_cmd_transport(struct ble_hci_cmd *cmd)
-{
-    int rc;
-
-#if BLE_MONITOR
-    ble_monitor_send(BLE_MONITOR_OPCODE_COMMAND_PKT, cmd,
-                     cmd->length + sizeof(*cmd));
-#endif
-
-    rc = ble_hci_trans_hs_cmd_tx((uint8_t *) cmd);
-    switch (rc) {
-    case 0:
-        return 0;
-
-    case BLE_ERR_MEM_CAPACITY:
-        return BLE_HS_ENOMEM_EVT;
-
-    default:
-        return BLE_HS_EUNKNOWN;
-    }
-}
 
 #ifdef ESP_PLATFORM
+// #include "bt_common.h"
+// #if (BT_HCI_LOG_INCLUDED == TRUE)
+// #include "hci_log/bt_hci_log.h"
+// #endif // (BT_HCI_LOG_INCLUDED == TRUE)
+
+
 /*
  * HCI Command Header
  *
@@ -71,15 +44,35 @@ ble_hs_hci_cmd_transport(struct ble_hci_cmd *cmd)
 #define BLE_HCI_CMD_HDR_LEN                 (3)
 
 static int
+ble_hs_hci_cmd_transport(struct ble_hci_cmd *cmd)
+{
+    int rc;
+
+    rc = ble_transport_to_ll_cmd((uint8_t *)cmd);
+    switch (rc) {
+    case 0:
+        return 0;
+
+    case BLE_ERR_MEM_CAPACITY:
+        return BLE_HS_ENOMEM_EVT;
+
+    default:
+        return BLE_HS_EUNKNOWN;
+    }
+}
+
+static int
 ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
 {
+    struct ble_hci_cmd *cmd;
     uint8_t *buf;
     int rc;
 
-    buf = ble_hci_trans_buf_alloc(BLE_HCI_TRANS_BUF_CMD);
-    BLE_HS_DBG_ASSERT(buf != NULL);
+    cmd = (struct ble_hci_cmd *)ble_transport_alloc_cmd();
+    BLE_HS_DBG_ASSERT(cmd != NULL);
 
-#if !(SOC_ESP_NIMBLE_CONTROLLER) && !CONFIG_BT_CONTROLLER_DISABLED
+    buf = (uint8_t *)cmd;
+#if !(SOC_ESP_NIMBLE_CONTROLLER) && CONFIG_BT_CONTROLLER_ENABLED
     /* Hack for avoiding memcpy while handling tx pkt to VHCI,
      * keep one byte for type field*/
     buf++;
@@ -96,9 +89,19 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
     BLE_HS_LOG(DEBUG, "\n");
 #endif
 
-#if !(SOC_ESP_NIMBLE_CONTROLLER) && !CONFIG_BT_CONTROLLER_DISABLED
+#if !(SOC_ESP_NIMBLE_CONTROLLER) && CONFIG_BT_CONTROLLER_ENABLED
     buf--;
 #endif
+
+// #if ((BT_HCI_LOG_INCLUDED == TRUE) && SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
+//     uint8_t *data;
+// #if !(SOC_ESP_NIMBLE_CONTROLLER) && CONFIG_BT_CONTROLLER_ENABLED
+//     data = (uint8_t *)buf + 1;
+// #else
+//     data = (uint8_t *)buf;
+// #endif
+//     bt_hci_log_record_hci_data(0x01, data, len + BLE_HCI_CMD_HDR_LEN);
+// #endif
 
     rc = ble_hs_hci_cmd_transport((void *) buf);
 
@@ -110,15 +113,32 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
 
     return rc;
 }
+# else /* ! ESP_PLATFORM */
+static int
+ble_hs_hci_cmd_transport(struct ble_hci_cmd *cmd)
+{
+    int rc;
 
-#else
+    rc = ble_transport_to_ll_cmd(cmd);
+    switch (rc) {
+    case 0:
+        return 0;
+
+    case BLE_ERR_MEM_CAPACITY:
+        return BLE_HS_ENOMEM_EVT;
+
+    default:
+        return BLE_HS_EUNKNOWN;
+    }
+}
+
 static int
 ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
 {
     struct ble_hci_cmd *cmd;
     int rc;
 
-    cmd = (void *) ble_hci_trans_buf_alloc(BLE_HCI_TRANS_BUF_CMD);
+    cmd = ble_transport_alloc_cmd();
     BLE_HS_DBG_ASSERT(cmd != NULL);
 
     cmd->opcode = htole16(opcode);
@@ -137,7 +157,8 @@ ble_hs_hci_cmd_send(uint16_t opcode, uint8_t len, const void *cmddata)
 
     return rc;
 }
-#endif
+
+#endif /*ESP_PLATFORM */
 
 int
 ble_hs_hci_cmd_send_buf(uint16_t opcode, const void *buf, uint8_t buf_len)

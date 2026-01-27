@@ -18,6 +18,7 @@
  */
 
 #include "nimble/nimble/host/include/host/ble_hs.h"
+#include "nimble/nimble/host/include/host/ble_hs_mbuf.h"
 #include "ble_hs_priv.h"
 
 /**
@@ -29,7 +30,11 @@ ble_hs_mbuf_gen_pkt(uint16_t leading_space)
     struct os_mbuf *om;
     int rc;
 
+#if MYNEWT_VAL(BLE_CONTROLLER)
+    om = os_msys_get_pkthdr(0, sizeof(struct ble_mbuf_hdr));
+#else
     om = os_msys_get_pkthdr(0, 0);
+#endif
     if (om == NULL) {
         return NULL;
     }
@@ -95,12 +100,12 @@ ble_hs_mbuf_l2cap_pkt(void)
 struct os_mbuf *
 ble_hs_mbuf_att_pkt(void)
 {
-    /* Prepare write request and response are the larget ATT commands which
+    /* Prepare write request and response are the largest ATT commands which
      * contain attribute data.
      */
-     return ble_hs_mbuf_gen_pkt(BLE_HCI_DATA_HDR_SZ +
-                                BLE_L2CAP_HDR_SZ +
-                                BLE_ATT_PREP_WRITE_CMD_BASE_SZ);
+    return ble_hs_mbuf_gen_pkt(BLE_HCI_DATA_HDR_SZ +
+                               BLE_L2CAP_HDR_SZ +
+                               BLE_ATT_PREP_WRITE_CMD_BASE_SZ);
 }
 
 struct os_mbuf *

@@ -21,7 +21,8 @@
 #define H_BLE_HS_ADV_
 
 #include <inttypes.h>
-#include "ble_uuid.h"
+#include "nimble/nimble/host/include/host/ble_uuid.h"
+#include "nimble/porting/nimble/include/syscfg/syscfg.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,6 +32,8 @@ extern "C" {
 
 /** Max field payload size (account for 2-byte header). */
 #define BLE_HS_ADV_MAX_FIELD_SZ     (BLE_HS_ADV_MAX_SZ - 2)
+
+#define BLE_HS_ADV_LE_SUPP_FEAT_LEN             6
 
 struct ble_hs_adv_field {
     uint8_t length;
@@ -72,6 +75,22 @@ struct ble_hs_adv_fields {
     /*** 0x0d - Slave connection interval range. */
     const uint8_t *slave_itvl_range;
 
+    /*** 0x10 - Security Manager TK value */
+    const uint8_t *sm_tk_value;
+    unsigned sm_tk_value_is_present:1;
+
+    /*** 0x11 - Security Manager OOB flag */
+    uint8_t sm_oob_flag;
+    unsigned sm_oob_flag_is_present:1;
+
+    /*** 0x14 - 16-bit service soliciation list. */
+    const ble_uuid16_t *sol_uuids16;
+    uint8_t sol_num_uuids16;
+
+    /*** 0x15 - 128-bit service solicitation UUIDs. */
+    const ble_uuid128_t *sol_uuids128;
+    uint8_t sol_num_uuids128;
+
     /*** 0x16 - Service data - 16-bit UUID. */
     const uint8_t *svc_data_uuid16;
     uint8_t svc_data_uuid16_len;
@@ -80,6 +99,10 @@ struct ble_hs_adv_fields {
     const uint8_t *public_tgt_addr;
     uint8_t num_public_tgt_addrs;
 
+    /*** 0x18 - Random target address. */
+    const uint8_t *random_tgt_addr;
+    uint8_t num_random_tgt_addrs;
+
     /*** 0x19 - Appearance. */
     uint16_t appearance;
     unsigned appearance_is_present:1;
@@ -87,6 +110,19 @@ struct ble_hs_adv_fields {
     /*** 0x1a - Advertising interval. */
     uint16_t adv_itvl;
     unsigned adv_itvl_is_present:1;
+
+    /*** 0x1b - LE Bluetooth device address */
+    const uint8_t *device_addr;
+    unsigned device_addr_type;
+    unsigned device_addr_is_present:1;
+
+    /*** 0x1f - 32-bit service solicitation UUIDs */
+    const ble_uuid32_t *sol_uuids32;
+    uint8_t sol_num_uuids32;
+
+    /*** 0x1c - LE Role */
+    uint8_t le_role;
+    unsigned le_role_is_present:1;
 
     /*** 0x20 - Service data - 32-bit UUID. */
     const uint8_t *svc_data_uuid32;
@@ -99,6 +135,21 @@ struct ble_hs_adv_fields {
     /*** 0x24 - URI. */
     const uint8_t *uri;
     uint8_t uri_len;
+
+    /*** 0x27 - LE Supported Features. */
+    /*** Core Spec v5.4 Vol. 6 Part B 4.6 */
+    uint8_t le_supp_feat[BLE_HS_ADV_LE_SUPP_FEAT_LEN];
+    unsigned le_supp_feat_is_present;
+
+    /*** 0x2f - Advertising interval - long. */
+    uint32_t adv_itvl_long;
+    unsigned adv_itvl_long_is_present:1;
+
+#if MYNEWT_VAL(ENC_ADV_DATA)
+    /*** 0x31 - Encrypted Advertising Data. */
+    const uint8_t *enc_adv_data;
+    uint8_t enc_adv_data_len;
+#endif
 
     /*** 0xff - Manufacturer specific data. */
     const uint8_t *mfg_data;
@@ -115,6 +166,8 @@ struct ble_hs_adv_fields {
 #define BLE_HS_ADV_TYPE_INCOMP_NAME             0x08
 #define BLE_HS_ADV_TYPE_COMP_NAME               0x09
 #define BLE_HS_ADV_TYPE_TX_PWR_LVL              0x0a
+#define BLE_HS_ADV_TYPE_SEC_MGR_TK_VALUE        0x10
+#define BLE_HS_ADV_TYPE_SEC_MGR_OOB_FLAG        0x11
 #define BLE_HS_ADV_TYPE_SLAVE_ITVL_RANGE        0x12
 #define BLE_HS_ADV_TYPE_SOL_UUIDS16             0x14
 #define BLE_HS_ADV_TYPE_SOL_UUIDS128            0x15
@@ -123,12 +176,18 @@ struct ble_hs_adv_fields {
 #define BLE_HS_ADV_TYPE_RANDOM_TGT_ADDR         0x18
 #define BLE_HS_ADV_TYPE_APPEARANCE              0x19
 #define BLE_HS_ADV_TYPE_ADV_ITVL                0x1a
+#define BLE_HS_ADV_TYPE_DEVICE_ADDR             0x1b
+#define BLE_HS_ADV_TYPE_LE_ROLE                 0x1c
+#define BLE_HS_ADV_TYPE_SOL_UUIDS32             0x1f
 #define BLE_HS_ADV_TYPE_SVC_DATA_UUID32         0x20
 #define BLE_HS_ADV_TYPE_SVC_DATA_UUID128        0x21
 #define BLE_HS_ADV_TYPE_URI                     0x24
+#define BLE_HS_ADV_TYPE_LE_SUPP_FEAT            0x27
 #define BLE_HS_ADV_TYPE_MESH_PROV               0x29
 #define BLE_HS_ADV_TYPE_MESH_MESSAGE            0x2a
 #define BLE_HS_ADV_TYPE_MESH_BEACON             0x2b
+#define BLE_HS_ADV_TYPE_ADV_ITVL_LONG           0x2f
+#define BLE_HS_ADV_TYPE_ENC_ADV_DATA            0x31
 #define BLE_HS_ADV_TYPE_MFG_DATA                0xff
 
 #define BLE_HS_ADV_FLAGS_LEN                    1
@@ -157,6 +216,10 @@ struct ble_hs_adv_fields {
 #define BLE_HS_ADV_SVC_DATA_UUID32_MIN_LEN      4
 
 #define BLE_HS_ADV_SVC_DATA_UUID128_MIN_LEN     16
+
+#define BLE_HS_ADV_ADDR_TYPE_LEN		1
+
+#define BLE_HS_ADV_ADV_ITVL_LONG_LEN            4
 
 int ble_hs_adv_set_fields_mbuf(const struct ble_hs_adv_fields *adv_fields,
                                struct os_mbuf *om);

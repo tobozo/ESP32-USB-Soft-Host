@@ -121,7 +121,7 @@ uint16_t ble_npl_sem_get_count(struct ble_npl_sem *sem);
  * Callouts
  */
 
-void ble_npl_callout_init(struct ble_npl_callout *co, struct ble_npl_eventq *evq,
+int ble_npl_callout_init(struct ble_npl_callout *co, struct ble_npl_eventq *evq,
                           ble_npl_event_fn *ev_cb, void *ev_arg);
 
 ble_npl_error_t ble_npl_callout_reset(struct ble_npl_callout *co,
@@ -163,7 +163,11 @@ void ble_npl_time_delay(ble_npl_time_t ticks);
 
 #if NIMBLE_CFG_CONTROLLER
 
+#ifdef ESP_PLATFORM
+void ble_npl_hw_set_isr(int irqn, uint32_t addr);
+#else
 void ble_npl_hw_set_isr(int irqn, void (*addr)(void));
+#endif
 
 #endif
 

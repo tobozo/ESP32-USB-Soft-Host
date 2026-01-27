@@ -25,13 +25,10 @@ extern "C" {
 #endif
 
 #include "nimble/nimble/include/nimble/hci_common.h"
-
-/* For supported commands */
-#define BLE_LL_SUPP_CMD_LEN (45)
-extern const uint8_t g_ble_ll_supp_cmds[BLE_LL_SUPP_CMD_LEN];
+#include "nimble/nimble/transport/include/nimble/transport.h"
 
 /* The largest event the controller will send. */
-#define BLE_LL_MAX_EVT_LEN  MYNEWT_VAL(BLE_HCI_EVT_BUF_SIZE)
+#define BLE_LL_MAX_EVT_LEN  MYNEWT_VAL(BLE_TRANSPORT_EVT_SIZE)
 
 /*
  * This determines the number of outstanding commands allowed from the
@@ -41,10 +38,28 @@ extern const uint8_t g_ble_ll_supp_cmds[BLE_LL_SUPP_CMD_LEN];
  */
 #define BLE_LL_CFG_NUM_HCI_CMD_PKTS     (1)
 
-typedef void (*ble_ll_hci_post_cmd_complete_cb)(void);
+typedef void (*ble_ll_hci_post_cmd_complete_cb)(void *user_data);
+
+#if MYNEWT_VAL(BLE_LL_HCI_VS)
+typedef int (* ble_ll_hci_vs_cb_t)(uint16_t ocf,
+                                   const uint8_t *cmdbuf, uint8_t cmdlen,
+                                   uint8_t *rspbuf, uint8_t *rsplen);
+
+#define BLE_LL_HCI_VS_CMD(_ocf, _cb)    { .ocf = (_ocf), .cb = (_cb) }
+
+struct ble_ll_hci_vs_cmd {
+    uint16_t ocf;
+    ble_ll_hci_vs_cb_t cb;
+    SLIST_ENTRY(ble_ll_hci_vs_cmd) link;
+};
+#endif
 
 /* Initialize LL HCI */
 void ble_ll_hci_init(void);
+
+int ble_ll_hci_cmd_rx(uint8_t *cmdbuf);
+int ble_ll_hci_acl_rx(struct os_mbuf *om);
+int ble_ll_hci_iso_rx(struct os_mbuf *om);
 
 /* Used to determine if the LE event is enabled/disabled */
 bool ble_ll_hci_is_le_event_enabled(unsigned int subev);
@@ -65,8 +80,17 @@ int ble_ll_hci_chk_phy_masks(uint8_t all_phys, uint8_t tx_phys, uint8_t rx_phys,
 /* Returns true if Extended Advertising HCI commands are in use */
 bool ble_ll_hci_adv_mode_ext(void);
 
-/* Get TX power compensation rounded to integer dB */
-int8_t ble_ll_get_tx_pwr_compensation(void);
+/* Check if max octets/time are within allowed range */
+int ble_ll_hci_check_dle(uint16_t max_octets, uint16_t max_time);
+
+void ble_ll_hci_supp_cmd_get(uint8_t *buf);
+
+/* Used to set post HCI command hook */
+void ble_ll_hci_post_cmd_cb_set(ble_ll_hci_post_cmd_complete_cb cb, void *user_data);
+
+#if MYNEWT_VAL(BLE_LL_HCI_VS)
+void ble_ll_hci_vs_register(struct ble_ll_hci_vs_cmd *cmds, uint32_t num_cmds);
+#endif
 
 #ifdef __cplusplus
 }

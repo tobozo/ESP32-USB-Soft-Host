@@ -33,8 +33,13 @@
  *
  */
 
-#include "../include/os/os.h"
-#include "../include/os/os_trace_api.h"
+#include "syscfg/syscfg.h"
+
+#if !CONFIG_BT_LE_CONTROLLER_NPL_OS_PORTING_SUPPORT
+
+#include "nimble/porting/nimble/include/os/os.h"
+#include "nimble/porting/nimble/include/os/os_trace_api.h"
+#include "nimble/porting/nimble/include/modlog/modlog.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -59,6 +64,7 @@
 STAILQ_HEAD(, os_mbuf_pool) g_msys_pool_list =
     STAILQ_HEAD_INITIALIZER(g_msys_pool_list);
 
+static uint8_t log_count;
 
 int
 os_mqueue_init(struct os_mqueue *mq, ble_npl_event_fn *ev_cb, void *arg)
@@ -186,6 +192,11 @@ os_msys_get(uint16_t dsize, uint16_t leadingspace)
     m = os_mbuf_get(pool, leadingspace);
     return (m);
 err:
+    log_count ++;
+    if ((log_count % 100) == 0) {
+        log_count = 0;
+    }
+
     return (NULL);
 }
 
@@ -205,6 +216,10 @@ os_msys_get_pkthdr(uint16_t dsize, uint16_t user_hdr_len)
     m = os_mbuf_get_pkthdr(pool, user_hdr_len);
     return (m);
 err:
+    log_count ++;
+    if ((log_count % 100) == 0) {
+        log_count = 0;
+    }
     return (NULL);
 }
 
@@ -389,8 +404,6 @@ os_mbuf_len(const struct os_mbuf *om)
     return len;
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpointer-arith"
 int
 os_mbuf_append(struct os_mbuf *om, const void *data,  uint16_t len)
 {
@@ -464,7 +477,6 @@ os_mbuf_append(struct os_mbuf *om, const void *data,  uint16_t len)
 err:
     return (rc);
 }
-#pragma GCC diagnostic pop
 
 int
 os_mbuf_appendfrom(struct os_mbuf *dst, const struct os_mbuf *src,
@@ -674,9 +686,6 @@ os_mbuf_adj(struct os_mbuf *mp, int req_len)
     }
 }
 
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpointer-arith"
 int
 os_mbuf_cmpf(const struct os_mbuf *om, int off, const void *data, int len)
 {
@@ -717,7 +726,6 @@ os_mbuf_cmpf(const struct os_mbuf *om, int off, const void *data, int len)
         }
     }
 }
-#pragma GCC diagnostic pop
 
 int
 os_mbuf_cmpm(const struct os_mbuf *om1, uint16_t offset1,
@@ -1258,3 +1266,5 @@ os_mbuf_pack_chains(struct os_mbuf *m1, struct os_mbuf *m2)
 
     return m1;
 }
+
+#endif

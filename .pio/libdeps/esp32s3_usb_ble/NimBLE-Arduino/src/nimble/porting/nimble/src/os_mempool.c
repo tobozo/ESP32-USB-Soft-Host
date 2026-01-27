@@ -17,13 +17,17 @@
  * under the License.
  */
 
-#include "../include/os/os.h"
-#include "../include/os/os_trace_api.h"
+#include "syscfg/syscfg.h"
+
+#if !CONFIG_BT_LE_CONTROLLER_NPL_OS_PORTING_SUPPORT
+
+#include "nimble/porting/nimble/include/os/os.h"
+#include "nimble/porting/nimble/include/os/os_trace_api.h"
 
 #include <string.h>
 #include <assert.h>
 #include <stdbool.h>
-#include "../include/syscfg/syscfg.h"
+#include "nimble/porting/nimble/include/modlog/modlog.h"
 #if !MYNEWT_VAL(OS_SYSVIEW_TRACE_MEMPOOL)
 #define OS_TRACE_DISABLE_FILE_API
 #endif
@@ -484,3 +488,5 @@ os_mempool_module_init(void)
 {
     STAILQ_INIT(&g_os_mempool_list);
 }
+
+#endif

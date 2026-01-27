@@ -17,7 +17,11 @@
  * under the License.
  */
 
-#include "../include/os/endian.h"
+#include "syscfg/syscfg.h"
+
+#if !CONFIG_BT_LE_CONTROLLER_NPL_OS_PORTING_SUPPORT
+
+#include "nimble/porting/nimble/include/os/endian.h"
 
 void
 put_le16(void *buf, uint16_t x)
@@ -266,3 +270,5 @@ swap_buf(uint8_t *dst, const uint8_t *src, int len)
         dst[len - 1 - i] = src[i];
     }
 }
+
+#endif

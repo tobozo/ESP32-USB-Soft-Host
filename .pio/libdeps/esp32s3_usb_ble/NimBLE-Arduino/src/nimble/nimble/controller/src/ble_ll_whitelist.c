@@ -25,18 +25,12 @@
 #include "nimble/porting/nimble/include/os/os.h"
 #include "nimble/nimble/include/nimble/ble.h"
 #include "nimble/nimble/include/nimble/nimble_opt.h"
-
-#if defined(ARDUINO_ARCH_NRF5) && defined(NRF51)
 #include "nimble/nimble/drivers/nrf51/include/ble/xcvr.h"
-#elif defined(ARDUINO_ARCH_NRF5) && defined(NRF52_SERIES)
-#include "nimble/nimble/drivers/nrf52/include/ble/xcvr.h"
-#endif
-
-#include "../include/controller/ble_ll_whitelist.h"
-#include "../include/controller/ble_ll_hci.h"
-#include "../include/controller/ble_ll_adv.h"
-#include "../include/controller/ble_ll_scan.h"
-#include "../include/controller/ble_hw.h"
+#include "nimble/nimble/controller/include/controller/ble_ll_whitelist.h"
+#include "nimble/nimble/controller/include/controller/ble_ll_hci.h"
+#include "nimble/nimble/controller/include/controller/ble_ll_adv.h"
+#include "nimble/nimble/controller/include/controller/ble_ll_scan.h"
+#include "nimble/nimble/controller/include/controller/ble_hw.h"
 
 #if (MYNEWT_VAL(BLE_LL_WHITELIST_SIZE) < BLE_HW_WHITE_LIST_SIZE)
 #define BLE_LL_WHITELIST_SIZE       MYNEWT_VAL(BLE_LL_WHITELIST_SIZE)
@@ -56,8 +50,6 @@ struct ble_ll_whitelist_entry g_ble_ll_whitelist[BLE_LL_WHITELIST_SIZE];
 static int
 ble_ll_whitelist_chg_allowed(void)
 {
-    int rc;
-
     /*
      * This command is not allowed if:
      *  -> advertising uses the whitelist and we are currently advertising.
@@ -65,11 +57,19 @@ ble_ll_whitelist_chg_allowed(void)
      *  -> initiating uses whitelist and a LE create connection command is in
      *     progress
      */
-    rc = 1;
-    if (!ble_ll_adv_can_chg_whitelist() || !ble_ll_scan_can_chg_whitelist()) {
-        rc = 0;
+#if MYNEWT_VAL(BLE_LL_ROLE_BROADCASTER)
+    if (ble_ll_adv_can_chg_whitelist()) {
+        return 1;
     }
-    return rc;
+#endif
+
+#if MYNEWT_VAL(BLE_LL_ROLE_OBSERVER)
+    if (ble_ll_scan_can_chg_whitelist()) {
+        return 1;
+    }
+#endif
+
+    return 0;
 }
 
 /**

@@ -24,9 +24,10 @@
 #include "nimble/nimble/include/nimble/ble.h"
 #include "nimble/nimble/include/nimble/hci_common.h"
 #include "nimble/nimble/include/nimble/nimble_npl.h"
-#include "ble_ll_sched.h"
-#include "ble_ll_ctrl.h"
-#include "ble_phy.h"
+#include "nimble/nimble/controller/include/controller/ble_ll.h"
+#include "nimble/nimble/controller/include/controller/ble_ll_sched.h"
+#include "nimble/nimble/controller/include/controller/ble_ll_ctrl.h"
+#include "nimble/nimble/controller/include/controller/ble_phy.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,26 +35,18 @@ extern "C" {
 
 /* Roles */
 #define BLE_LL_CONN_ROLE_NONE           (0)
-#define BLE_LL_CONN_ROLE_MASTER         (1)
-#define BLE_LL_CONN_ROLE_SLAVE          (2)
+
+#if MYNEWT_VAL(BLE_LL_ROLE_CENTRAL)
+#define BLE_LL_CONN_ROLE_CENTRAL        (1)
+#endif
+#if MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL)
+#define BLE_LL_CONN_ROLE_PERIPHERAL     (2)
+#endif
 
 /* Connection states */
 #define BLE_LL_CONN_STATE_IDLE          (0)
 #define BLE_LL_CONN_STATE_CREATED       (1)
 #define BLE_LL_CONN_STATE_ESTABLISHED   (2)
-
-/* Channel map size */
-#define BLE_LL_CONN_CHMAP_LEN           (5)
-
-/* Definitions for source clock accuracy */
-#define BLE_MASTER_SCA_251_500_PPM      (0)
-#define BLE_MASTER_SCA_151_250_PPM      (1)
-#define BLE_MASTER_SCA_101_150_PPM      (2)
-#define BLE_MASTER_SCA_76_100_PPM       (3)
-#define BLE_MASTER_SCA_51_75_PPM        (4)
-#define BLE_MASTER_SCA_31_50_PPM        (5)
-#define BLE_MASTER_SCA_21_30_PPM        (6)
-#define BLE_MASTER_SCA_0_20_PPM         (7)
 
 /* Definition for RSSI when the RSSI is unknown */
 #define BLE_LL_CONN_UNKNOWN_RSSI        (127)
@@ -105,41 +98,44 @@ struct ble_ll_conn_enc_data
 #endif
 
 /* Connection state machine flags. */
-union ble_ll_conn_sm_flags {
-    struct {
-        uint32_t pkt_rxd:1;
-        uint32_t terminate_ind_txd:1;
-        uint32_t terminate_ind_rxd:1;
-        uint32_t terminate_ind_rxd_acked:1;
-        uint32_t allow_slave_latency:1;
-        uint32_t slave_set_last_anchor:1;
-        uint32_t awaiting_host_reply:1;
-        uint32_t terminate_started:1;
-        uint32_t conn_update_sched:1;
-        uint32_t host_expects_upd_event:1;
-        uint32_t version_ind_sent:1;
-        uint32_t rxd_version_ind:1;
-        uint32_t chanmap_update_scheduled:1;
-        uint32_t conn_empty_pdu_txd:1;
-        uint32_t last_txd_md:1;
-        uint32_t conn_req_txd:1;
-        uint32_t send_ltk_req:1;
-        uint32_t encrypted:1;
-        uint32_t encrypt_chg_sent:1;
-        uint32_t le_ping_supp:1;
-        uint32_t csa2_supp:1;
-        uint32_t host_phy_update: 1;
-        uint32_t phy_update_sched: 1;
-        uint32_t ctrlr_phy_update: 1;
-        uint32_t phy_update_event: 1;
-        uint32_t peer_phy_update: 1; /* XXX:combine with ctrlr udpate bit? */
-        uint32_t aux_conn_req: 1;
-        uint32_t rxd_features:1;
-        uint32_t pending_hci_rd_features:1;
-        uint32_t pending_initiate_dle:1;
-    } cfbit;
-    uint32_t conn_flags;
-} __attribute__((packed));
+struct ble_ll_conn_sm_flags {
+    uint32_t pkt_rxd : 1;
+    uint32_t last_txd_md : 1;
+    uint32_t empty_pdu_txd : 1;
+    uint32_t periph_use_latency : 1;
+    uint32_t periph_set_last_anchor : 1;
+    uint32_t csa2 : 1;
+    uint32_t encrypted : 1;
+    uint32_t encrypt_ltk_req : 1;
+    uint32_t encrypt_event_sent : 1;
+    uint32_t version_ind_txd : 1;
+    uint32_t version_ind_rxd : 1;
+    uint32_t features_rxd : 1;
+    uint32_t features_host_req : 1;
+    uint32_t terminate_started : 1;
+    uint32_t terminate_ind_txd : 1;
+    uint32_t terminate_ind_rxd : 1;
+    uint32_t terminate_ind_rxd_acked : 1;
+    uint32_t conn_update_sched : 1;
+    uint32_t conn_update_use_cp : 1;
+    uint32_t conn_update_host_w4reply : 1;
+    uint32_t conn_update_host_w4event : 1;
+    uint32_t chanmap_update_sched : 1;
+    uint32_t phy_update_sched : 1;
+    uint32_t phy_update_self_initiated : 1;
+    uint32_t phy_update_peer_initiated : 1;
+    uint32_t phy_update_host_initiated : 1;
+    uint32_t phy_update_host_w4event : 1;
+    uint32_t le_ping_supp : 1;
+#if MYNEWT_VAL(BLE_LL_CONN_INIT_AUTO_DLE)
+    uint32_t pending_initiate_dle : 1;
+#endif
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_ENHANCED_CONN_UPDATE)
+    uint8_t subrate_trans : 1;
+    uint8_t subrate_ind_txd : 1;
+    uint8_t subrate_host_req : 1;
+#endif
+};
 
 /**
  * Structure used for PHY data inside a connection.
@@ -167,11 +163,11 @@ struct ble_ll_conn_phy_data
     uint32_t cur_rx_phy: 2;
     uint32_t new_tx_phy: 2;
     uint32_t new_rx_phy: 2;
-    uint32_t host_pref_tx_phys_mask: 3;
-    uint32_t host_pref_rx_phys_mask: 3;
-    uint32_t req_pref_tx_phys_mask: 3;
-    uint32_t req_pref_rx_phys_mask: 3;
-    uint32_t phy_options: 2;
+    uint32_t pref_mask_tx: 3;
+    uint32_t pref_mask_rx: 3;
+    uint32_t pref_mask_tx_req: 3;
+    uint32_t pref_mask_rx_req: 3;
+    uint32_t pref_opts: 2;
 }  __attribute__((packed));
 
 #define CONN_CUR_TX_PHY_MASK(csm)   (1 << ((csm)->phy_data.cur_tx_phy - 1))
@@ -188,33 +184,27 @@ struct hci_conn_update
     uint16_t max_ce_len;
 };
 
-struct hci_ext_conn_params
-{
-    uint16_t scan_itvl;
-    uint16_t scan_window;
-    uint16_t conn_itvl_min;
-    uint16_t conn_itvl_max;
-    uint16_t conn_latency;
-    uint16_t supervision_timeout;
-    uint16_t min_ce_len;
-    uint16_t max_ce_len;
+struct ble_ll_conn_subrate_params {
+    uint16_t subrate_factor;
+    uint16_t subrate_base_event;
+    uint16_t periph_latency;
+    uint16_t cont_num;
+    uint16_t supervision_tmo;
 };
 
-struct hci_ext_create_conn
-{
-    uint8_t filter_policy;
-    uint8_t own_addr_type;
-    uint8_t peer_addr_type;
-    uint8_t peer_addr[BLE_DEV_ADDR_LEN];
-    uint8_t init_phy_mask;
-    struct hci_ext_conn_params params[3];
+struct ble_ll_conn_subrate_req_params {
+    uint16_t subrate_min;
+    uint16_t subrate_max;
+    uint16_t max_latency;
+    uint16_t cont_num;
+    uint16_t supervision_tmo;
 };
 
 /* Connection state machine */
 struct ble_ll_conn_sm
 {
     /* Connection state machine flags */
-    union ble_ll_conn_sm_flags csmflags;
+    struct ble_ll_conn_sm_flags flags;
 
     /* Current connection handle, state and role */
     uint16_t conn_handle;
@@ -223,9 +213,6 @@ struct ble_ll_conn_sm
 
     /* RSSI */
     int8_t conn_rssi;
-
-    /* For privacy */
-    int8_t rpa_index;
 
     /* Connection data length management */
     uint8_t max_tx_octets;
@@ -240,9 +227,10 @@ struct ble_ll_conn_sm
     uint16_t rem_max_rx_time;
     uint16_t eff_max_tx_time;
     uint16_t eff_max_rx_time;
-    uint8_t max_tx_octets_phy_mode[BLE_PHY_NUM_MODE];
+    uint16_t ota_max_rx_time;
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LE_CODED_PHY)
     uint16_t host_req_max_tx_time;
+    uint16_t host_req_max_rx_time;
 #endif
 
 #if (BLE_LL_BT5_PHY_SUPPORTED == 1)
@@ -252,18 +240,14 @@ struct ble_ll_conn_sm
 #endif
 
     /* Used to calculate data channel index for connection */
-    uint8_t chanmap[BLE_LL_CONN_CHMAP_LEN];
-    uint8_t req_chanmap[BLE_LL_CONN_CHMAP_LEN];
+    uint8_t chan_map[BLE_LL_CHAN_MAP_LEN];
+    uint8_t req_chanmap[BLE_LL_CHAN_MAP_LEN];
     uint16_t chanmap_instant;
     uint16_t channel_id; /* TODO could be union with hop and last chan used */
     uint8_t hop_inc;
     uint8_t data_chan_index;
     uint8_t last_unmapped_chan;
-    uint8_t num_used_chans;
-
-#if MYNEWT_VAL(BLE_LL_STRICT_CONN_SCHEDULING)
-    uint8_t period_occ_mask;    /* mask: period 0 = 0x01, period 3 = 0x08 */
-#endif
+    uint8_t chan_map_used;
 
     /* Ack/Flow Control */
     uint8_t tx_seqnum;          /* note: can be 1 bit */
@@ -280,7 +264,7 @@ struct ble_ll_conn_sm
     /* connection event mgmt */
     uint8_t reject_reason;
     uint8_t host_reply_opcode;
-    uint8_t master_sca;
+    uint8_t central_sca;
     uint8_t tx_win_size;
     uint8_t cur_ctrl_proc;
     uint8_t disconnect_reason;
@@ -304,19 +288,37 @@ struct ble_ll_conn_sm
 
     /* Connection timing */
     uint16_t conn_itvl;
-    uint16_t slave_latency;
     uint16_t supervision_tmo;
-    uint16_t min_ce_len;
-    uint16_t max_ce_len;
+    uint32_t max_ce_len_ticks;
     uint16_t tx_win_off;
     uint32_t anchor_point;
     uint8_t anchor_point_usecs;     /* XXX: can this be uint8_t ?*/
     uint8_t conn_itvl_usecs;
     uint32_t conn_itvl_ticks;
     uint32_t last_anchor_point;     /* Slave only */
-    uint32_t slave_cur_tx_win_usecs;
-    uint32_t slave_cur_window_widening;
+    uint32_t periph_cur_tx_win_usecs;
+    uint32_t periph_cur_window_widening;
     uint32_t last_rxd_pdu_cputime;  /* Used exclusively for supervision timer */
+
+    uint16_t periph_latency;
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_ENHANCED_CONN_UPDATE)
+    uint16_t acc_subrate_min;
+    uint16_t acc_subrate_max;
+    uint16_t acc_max_latency;
+    uint16_t acc_cont_num;
+    uint16_t acc_supervision_tmo;
+
+    uint16_t subrate_base_event;
+    uint16_t subrate_factor;
+    uint16_t cont_num;
+    uint16_t cont_num_left;
+    uint8_t has_nonempty_pdu;
+
+    union {
+        struct ble_ll_conn_subrate_params subrate_trans;
+        struct ble_ll_conn_subrate_req_params subrate_req;
+    };
+#endif
 
     /*
      * Used to mark that identity address was used as InitA
@@ -327,6 +329,9 @@ struct ble_ll_conn_sm
     uint8_t own_addr_type;
     uint8_t peer_addr_type;
     uint8_t peer_addr[BLE_DEV_ADDR_LEN];
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_PRIVACY)
+    uint8_t peer_addr_resolved;
+#endif
 
     /*
      * XXX: TODO. Could save memory. Have single event at LL and put these
@@ -374,49 +379,70 @@ struct ble_ll_conn_sm
 
     /* For connection update procedure */
     struct ble_ll_conn_upd_req conn_update_req;
+    uint16_t conn_update_anchor_offset_req;
 
     /* XXX: for now, just store them all */
     struct ble_ll_conn_params conn_cp;
-
-    struct ble_ll_scan_sm *scansm;
-#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
-    struct hci_ext_create_conn initial_params;
-#endif
 
 #if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_PERIODIC_ADV_SYNC_TRANSFER)
     uint8_t  sync_transfer_mode;
     uint16_t sync_transfer_skip;
     uint32_t sync_transfer_sync_timeout;
 #endif
+
+#if MYNEWT_VAL(BLE_LL_CONN_STRICT_SCHED)
+    SLIST_ENTRY(ble_ll_conn_sm) css_sle;
+    uint16_t css_slot_idx;
+    uint16_t css_slot_idx_pending;
+    uint8_t css_period_idx;
+#endif
 };
 
-/* Flags */
-#define CONN_F_UPDATE_SCHED(csm)    ((csm)->csmflags.cfbit.conn_update_sched)
-#define CONN_F_EMPTY_PDU_TXD(csm)   ((csm)->csmflags.cfbit.conn_empty_pdu_txd)
-#define CONN_F_LAST_TXD_MD(csm)     ((csm)->csmflags.cfbit.last_txd_md)
-#define CONN_F_CONN_REQ_TXD(csm)    ((csm)->csmflags.cfbit.conn_req_txd)
-#define CONN_F_ENCRYPTED(csm)       ((csm)->csmflags.cfbit.encrypted)
-#define CONN_F_ENC_CHANGE_SENT(csm) ((csm)->csmflags.cfbit.encrypt_chg_sent)
-#define CONN_F_LE_PING_SUPP(csm)    ((csm)->csmflags.cfbit.le_ping_supp)
-#define CONN_F_TERMINATE_STARTED(csm) ((csm)->csmflags.cfbit.terminate_started)
-#define CONN_F_CSA2_SUPP(csm)       ((csm)->csmflags.cfbit.csa2_supp)
-#define CONN_F_HOST_PHY_UPDATE(csm) ((csm)->csmflags.cfbit.host_phy_update)
-#define CONN_F_PHY_UPDATE_SCHED(csm) ((csm)->csmflags.cfbit.phy_update_sched)
-#define CONN_F_CTRLR_PHY_UPDATE(csm) ((csm)->csmflags.cfbit.ctrlr_phy_update)
-#define CONN_F_PHY_UPDATE_EVENT(csm) ((csm)->csmflags.cfbit.phy_update_event)
-#define CONN_F_PEER_PHY_UPDATE(csm)  ((csm)->csmflags.cfbit.peer_phy_update)
-#define CONN_F_AUX_CONN_REQ(csm)  ((csm)->csmflags.cfbit.aux_conn_req)
-
 /* Role */
-#define CONN_IS_MASTER(csm)         (csm->conn_role == BLE_LL_CONN_ROLE_MASTER)
-#define CONN_IS_SLAVE(csm)          (csm->conn_role == BLE_LL_CONN_ROLE_SLAVE)
+#if MYNEWT_VAL(BLE_LL_ROLE_CENTRAL)
+#define CONN_IS_CENTRAL(csm)        (csm->conn_role == BLE_LL_CONN_ROLE_CENTRAL)
+#else
+#define CONN_IS_CENTRAL(csm)        (false)
+#endif
 
-/*
- * Given a handle, returns an active connection state machine (or NULL if the
- * handle does not exist
- *
- */
-struct ble_ll_conn_sm *ble_ll_conn_find_active_conn(uint16_t handle);
+#if MYNEWT_VAL(BLE_LL_ROLE_PERIPHERAL)
+#define CONN_IS_PERIPHERAL(csm)     (csm->conn_role == BLE_LL_CONN_ROLE_PERIPHERAL)
+#else
+#define CONN_IS_PERIPHERAL(csm)     (false)
+#endif
+
+static inline int
+ble_ll_conn_rem_feature_check(struct ble_ll_conn_sm *connsm, uint64_t feature)
+{
+    uint8_t byte_idx;
+
+    /* 8 lsb are conn features */
+    feature >>= 8;
+
+    byte_idx = __builtin_ctzll(feature) / 8;
+    return connsm->remote_features[byte_idx] & (feature >> (byte_idx * 8));
+}
+
+
+static inline void
+ble_ll_conn_rem_feature_add(struct ble_ll_conn_sm *connsm, uint64_t feature)
+{
+    uint8_t byte_idx;
+
+    /* 8 lsb are conn features */
+    feature >>= 8;
+
+    byte_idx = __builtin_ctzll(feature) / 8;
+    connsm->remote_features[byte_idx] |= (feature >> (byte_idx * 8));
+}
+
+
+struct ble_ll_conn_sm *ble_ll_conn_find_by_handle(uint16_t handle);
+struct ble_ll_conn_sm *ble_ll_conn_find_by_peer_addr(const uint8_t* addr,
+                                                     uint8_t addr_type);
+
+/* Perform channel map update on all connections (applies to central role) */
+void ble_ll_conn_chan_map_update(void);
 
 /* required for unit testing */
 uint8_t ble_ll_conn_calc_dci(struct ble_ll_conn_sm *conn, uint16_t latency);
@@ -424,6 +450,46 @@ uint8_t ble_ll_conn_calc_dci(struct ble_ll_conn_sm *conn, uint16_t latency);
 /* used to get anchor point for connection event specified */
 void ble_ll_conn_get_anchor(struct ble_ll_conn_sm *connsm, uint16_t conn_event,
                             uint32_t *anchor, uint8_t *anchor_usecs);
+
+#if MYNEWT_VAL(BLE_LL_ROLE_CENTRAL)
+int ble_ll_conn_move_anchor(struct ble_ll_conn_sm *connsm, uint16_t offset);
+#endif
+
+struct ble_ll_scan_addr_data;
+struct ble_ll_scan_pdu_data;
+
+uint8_t ble_ll_conn_tx_connect_ind_pducb(uint8_t *dptr, void *pducb_arg,
+                                         uint8_t *hdr_byte);
+void ble_ll_conn_prepare_connect_ind(struct ble_ll_conn_sm *connsm,
+                                     struct ble_ll_scan_pdu_data *pdu_data,
+                                     struct ble_ll_scan_addr_data *addrd,
+                                     uint8_t channel);
+
+/* Send CONNECT_IND/AUX_CONNECT_REQ */
+int ble_ll_conn_send_connect_req(struct os_mbuf *rxpdu,
+                                 struct ble_ll_scan_addr_data *addrd,
+                                 uint8_t ext);
+/* Cancel connection after AUX_CONNECT_REQ was sent */
+void ble_ll_conn_send_connect_req_cancel(void);
+/* Signal connection created via CONNECT_IND */
+void ble_ll_conn_created_on_legacy(struct os_mbuf *rxpdu,
+                                   struct ble_ll_scan_addr_data *addrd,
+                                   uint8_t *targeta);
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_EXT_ADV)
+/* Signal connection created via AUX_CONNECT_REQ */
+void ble_ll_conn_created_on_aux(struct os_mbuf *rxpdu,
+                                struct ble_ll_scan_addr_data *addrd,
+                                uint8_t *targeta);
+#endif
+
+#if MYNEWT_VAL(BLE_LL_CFG_FEAT_LL_ENHANCED_CONN_UPDATE)
+int ble_ll_conn_subrate_req_hci(struct ble_ll_conn_sm *connsm,
+                                struct ble_ll_conn_subrate_req_params *srp);
+int ble_ll_conn_subrate_req_llcp(struct ble_ll_conn_sm *connsm,
+                                 struct ble_ll_conn_subrate_req_params *srp);
+void ble_ll_conn_subrate_set(struct ble_ll_conn_sm *connsm,
+                             struct ble_ll_conn_subrate_params *sp);
+#endif
 
 #ifdef __cplusplus
 }

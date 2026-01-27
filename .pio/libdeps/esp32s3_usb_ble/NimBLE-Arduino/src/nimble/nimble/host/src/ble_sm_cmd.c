@@ -29,18 +29,20 @@ void *
 ble_sm_cmd_get(uint8_t opcode, size_t len, struct os_mbuf **txom)
 {
     struct ble_sm_hdr *hdr;
+    void *data;
 
     *txom = ble_hs_mbuf_l2cap_pkt();
     if (*txom == NULL) {
         return NULL;
     }
 
-    if (os_mbuf_extend(*txom, sizeof(*hdr) + len) == NULL) {
+    data = os_mbuf_extend(*txom, sizeof(*hdr) + len);
+    if (data == NULL) {
         os_mbuf_free_chain(*txom);
         return NULL;
     }
 
-    hdr = (struct ble_sm_hdr *)(*txom)->om_data;
+    hdr = (struct ble_sm_hdr *)data;
 
     hdr->opcode = opcode;
 
@@ -63,6 +65,8 @@ ble_sm_tx(uint16_t conn_handle, struct os_mbuf *txom)
                                          &conn, &chan);
     if (rc == 0) {
         rc = ble_l2cap_tx(conn, chan, txom);
+    } else {
+        os_mbuf_free_chain(txom);
     }
 
     return rc;

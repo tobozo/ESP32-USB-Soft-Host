@@ -8,7 +8,7 @@
 #ifndef __LPN_H__
 #define __LPN_H__
 
-#include "../include/mesh/mesh.h"
+#include "nimble/nimble/host/mesh/include/mesh/mesh.h"
 
 int bt_mesh_lpn_friend_update(struct bt_mesh_net_rx *rx,
 			      struct os_mbuf *buf);
@@ -42,15 +42,6 @@ static inline bool bt_mesh_lpn_waiting_update(void)
 {
 #if (MYNEWT_VAL(BLE_MESH_LOW_POWER))
 	return (bt_mesh.lpn.state == BT_MESH_LPN_WAIT_UPDATE);
-#else
-	return false;
-#endif
-}
-
-static inline bool bt_mesh_lpn_timer(void)
-{
-#if MYNEWT_VAL(BLE_MESH_LOW_POWER) && MYNEWT_VAL(BLE_MESH_LPN_AUTO)
-	return (bt_mesh.lpn.state == BT_MESH_LPN_TIMER);
 #else
 	return false;
 #endif

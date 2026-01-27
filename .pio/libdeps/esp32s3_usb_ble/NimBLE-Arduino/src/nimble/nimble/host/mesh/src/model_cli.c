@@ -6,11 +6,10 @@
 
 #include "nimble/porting/nimble/include/syscfg/syscfg.h"
 #if MYNEWT_VAL(BLE_MESH)
-
 #define MESH_LOG_MODULE BLE_MESH_MODEL_LOG
 
-#include "../include/mesh/mesh.h"
-#include "../include/mesh/model_cli.h"
+#include "nimble/nimble/host/mesh/include/mesh/mesh.h"
+#include "nimble/nimble/host/mesh/include/mesh/model_cli.h"
 #include "mesh_priv.h"
 
 static int32_t msg_timeout = K_SECONDS(5);
@@ -28,7 +27,7 @@ struct gen_level_param {
     int16_t *level;
 };
 
-static void gen_onoff_status(struct bt_mesh_model *model,
+static int gen_onoff_status(struct bt_mesh_model *model,
 			     struct bt_mesh_msg_ctx *ctx,
 			     struct os_mbuf *buf)
 {
@@ -43,7 +42,7 @@ static void gen_onoff_status(struct bt_mesh_model *model,
 
 	if (cli->op_pending != OP_GEN_ONOFF_STATUS) {
 		BT_WARN("Unexpected Generic OnOff Status message");
-		return;
+		return -ENOENT;
 	}
 
 	param = cli->op_param;
@@ -56,9 +55,11 @@ static void gen_onoff_status(struct bt_mesh_model *model,
 	BT_DBG("state: %d", state);
 
 	k_sem_give(&cli->op_sync);
+
+	return 0;
 }
 
-static void gen_level_status(struct bt_mesh_model *model,
+static int gen_level_status(struct bt_mesh_model *model,
 			     struct bt_mesh_msg_ctx *ctx,
 			     struct os_mbuf *buf)
 {
@@ -73,7 +74,7 @@ static void gen_level_status(struct bt_mesh_model *model,
 
 	if (cli->op_pending != OP_GEN_LEVEL_STATUS) {
 		BT_WARN("Unexpected Generic LEVEL Status message");
-		return;
+		return -EINVAL;
 	}
 
 	param = cli->op_param;
@@ -86,6 +87,8 @@ static void gen_level_status(struct bt_mesh_model *model,
 	BT_DBG("level: %d", level);
 
 	k_sem_give(&cli->op_sync);
+
+	return 0;
 }
 
 const struct bt_mesh_model_op gen_onoff_cli_op[] = {
@@ -300,4 +303,5 @@ done:
 	os_mbuf_free_chain(msg);
 	return err;
 }
-#endif
+
+#endif /* MYNEWT_VAL(BLE_MESH) */

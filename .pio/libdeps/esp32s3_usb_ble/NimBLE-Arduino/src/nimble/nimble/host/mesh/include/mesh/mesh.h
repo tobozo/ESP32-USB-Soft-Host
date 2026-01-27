@@ -15,6 +15,7 @@
 #include "nimble/porting/nimble/include/os/os_mbuf.h"
 
 #include "glue.h"
+#include "msg.h"
 #include "access.h"
 #include "main.h"
 #include "cfg.h"
@@ -26,6 +27,7 @@
 #include "cdb.h"
 #include "cfg.h"
 #include "heartbeat.h"
-#include "../../src/app_keys.h"
+#include "nimble/nimble/host/mesh/src/app_keys.h"
+#include "nimble/nimble/host/mesh/src/net.h"
 
 #endif /* __BT_MESH_H */

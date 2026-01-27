@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "../include/mesh/heartbeat.h"
+#include "nimble/nimble/host/mesh/include/mesh/heartbeat.h"
 
 static inline uint16_t bt_mesh_hb_pwr2(uint8_t val)
 {
@@ -38,3 +38,6 @@ void bt_mesh_hb_feature_changed(uint16_t features);
 
 uint8_t bt_mesh_hb_pub_set(struct bt_mesh_hb_pub *hb_pub);
 uint8_t bt_mesh_hb_sub_set(uint16_t src, uint16_t dst, uint32_t period);
+void bt_mesh_hb_sub_reset_count(void);
+void bt_mesh_hb_pub_pending_store(void);
+void bt_mesh_hb_pub_init(void);

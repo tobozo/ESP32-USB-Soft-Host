@@ -17,10 +17,14 @@
  * under the License.
  */
 
+#include "syscfg/syscfg.h"
+
+#if !CONFIG_BT_LE_CONTROLLER_NPL_OS_PORTING_SUPPORT
+
 #include <assert.h>
-#include "../include/os/os.h"
-#include "../include/mem/mem.h"
-#include "../include/sysinit/sysinit.h"
+#include "nimble/porting/nimble/include/os/os.h"
+#include "nimble/porting/nimble/include/mem/mem.h"
+#include "nimble/porting/nimble/include/sysinit/sysinit.h"
 
 #ifdef ESP_PLATFORM
 #include "nimble/esp_port/port/include/esp_nimble_mem.h"
@@ -94,7 +98,7 @@ static struct os_sanity_check os_msys_sc;
  * @return                      The msys pool's minimum safe buffer count.
  */
 static int
-IRAM_ATTR os_msys_sanity_min_count(int idx)
+os_msys_sanity_min_count(int idx)
 {
     switch (idx) {
     case 0:
@@ -110,7 +114,7 @@ IRAM_ATTR os_msys_sanity_min_count(int idx)
 }
 
 static int
-IRAM_ATTR os_msys_sanity(struct os_sanity_check *sc, void *arg)
+os_msys_sanity(struct os_sanity_check *sc, void *arg)
 {
     const struct os_mbuf_pool *omp;
     int min_count;
@@ -159,6 +163,10 @@ os_msys_buf_alloc(void)
 #if OS_MSYS_2_BLOCK_COUNT > 0
     os_msys_init_2_data = (os_membuf_t *)nimble_platform_mem_calloc(1, (sizeof(os_membuf_t) * SYSINIT_MSYS_2_MEMPOOL_SIZE));
     if (!os_msys_init_2_data) {
+#if OS_MSYS_1_BLOCK_COUNT > 0
+       nimble_platform_mem_free(os_msys_init_1_data);
+       os_msys_init_1_data = NULL;
+#endif
         return ESP_FAIL;
     }
 #endif
@@ -216,3 +224,5 @@ void os_msys_init(void)
     SYSINIT_PANIC_ASSERT(rc == 0);
 #endif
 }
+
+#endif

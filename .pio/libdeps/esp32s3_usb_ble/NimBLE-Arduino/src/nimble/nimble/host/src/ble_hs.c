@@ -23,17 +23,21 @@
 #include "nimble/porting/nimble/include/sysinit/sysinit.h"
 #include "nimble/porting/nimble/include/syscfg/syscfg.h"
 #include "nimble/porting/nimble/include/stats/stats.h"
-#include "nimble/nimble/include/nimble/ble_hci_trans.h"
+#include "nimble/nimble/host/include/host/ble_hs.h"
 #include "ble_hs_priv.h"
-#include "ble_monitor_priv.h"
 #include "nimble/nimble/include/nimble/nimble_npl.h"
 #ifndef MYNEWT
 #include "nimble/porting/nimble/include/nimble/nimble_port.h"
 #endif
 
-#define BLE_HS_HCI_EVT_COUNT                    \
-    (MYNEWT_VAL(BLE_HCI_EVT_HI_BUF_COUNT) +     \
-     MYNEWT_VAL(BLE_HCI_EVT_LO_BUF_COUNT))
+#include "nimble/nimble/host/include/host/ble_hs_pvcy.h"
+// #include "bt_common.h"
+// #if (BT_HCI_LOG_INCLUDED == TRUE)
+// #include "hci_log/bt_hci_log.h"
+// #endif // (BT_HCI_LOG_INCLUDED == TRUE)
+
+#define BLE_HS_HCI_EVT_COUNT    (MYNEWT_VAL(BLE_TRANSPORT_EVT_COUNT) + \
+                                 MYNEWT_VAL(BLE_TRANSPORT_EVT_DISCARDABLE_COUNT))
 
 static void ble_hs_event_rx_hci_ev(struct ble_npl_event *ev);
 #if NIMBLE_BLE_CONNECT
@@ -97,7 +101,11 @@ uint16_t ble_hs_max_client_configs;
 
 #if MYNEWT_VAL(BLE_HS_DEBUG)
 #ifdef ESP_PLATFORM
+#define MAX_NESTED_LOCKS 5
+static TaskHandle_t ble_hs_task_handles[MAX_NESTED_LOCKS];
+static int ble_hs_task_handle_index = 0;
 static uint8_t ble_hs_mutex_locked;
+static uint8_t counter_lock = 0;
 static TaskHandle_t ble_hs_task_handle;
 #endif
 static uint8_t ble_hs_dbg_mutex_locked;
@@ -134,7 +142,7 @@ ble_hs_evq_set(struct ble_npl_eventq *evq)
 int
 ble_hs_locked_by_cur_task(void)
 {
-#if MYNEWT
+#ifdef MYNEWT
     struct os_task *owner;
 
     if (!ble_npl_os_started()) {
@@ -179,8 +187,11 @@ ble_hs_lock_nested(void)
     rc = ble_npl_mutex_pend(&ble_hs_mutex, 0xffffffff);
 
 #if MYNEWT_VAL(BLE_HS_DEBUG) && defined(ESP_PLATFORM)
+    counter_lock++;
     ble_hs_mutex_locked = 1;
     ble_hs_task_handle = xTaskGetCurrentTaskHandle();
+    ble_hs_task_handles[ble_hs_task_handle_index] = xTaskGetCurrentTaskHandle();
+    ble_hs_task_handle_index++;
 #endif
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
 }
@@ -199,15 +210,23 @@ ble_hs_unlock_nested(void)
         return;
     }
 #ifdef ESP_PLATFORM
-    if(ble_hs_task_handle == xTaskGetCurrentTaskHandle()) {
-        ble_hs_task_handle = NULL;
-        ble_hs_mutex_locked = 0;
+    if (counter_lock > 0) {
+        counter_lock--;
+        if (counter_lock == 0) {
+            ble_hs_mutex_locked = 0;
+        }
+        if (ble_hs_task_handles[ble_hs_task_handle_index - 1] == xTaskGetCurrentTaskHandle()) {
+            ble_hs_task_handle_index--;
+            ble_hs_task_handles[ble_hs_task_handle_index] = NULL;
+            ble_hs_task_handle = ble_hs_task_handles[ble_hs_task_handle_index -1];
+        }
     }
 #endif
 #endif
 
     rc = ble_npl_mutex_release(&ble_hs_mutex);
     BLE_HS_DBG_ASSERT_EVAL(rc == 0 || rc == OS_NOT_STARTED);
+
 }
 
 /**
@@ -247,10 +266,6 @@ ble_hs_process_rx_data_queue(void)
     struct os_mbuf *om;
 
     while ((om = ble_mqueue_get(&ble_hs_rx_q)) != NULL) {
-#if BLE_MONITOR
-        ble_monitor_send_om(BLE_MONITOR_OPCODE_ACL_RX_PKT, om);
-#endif
-
         ble_hs_hci_evt_acl_process(om);
     }
 }
@@ -394,12 +409,6 @@ ble_hs_reset(void)
 
     ble_hs_sync_state = 0;
 
-    /* Reset transport.  Assume success; there is nothing we can do in case of
-     * failure.  If the transport failed to reset, the host will reset itself
-     * again when it fails to sync with the controller.
-     */
-    (void)ble_hci_trans_reset();
-
     ble_hs_clear_rx_queue();
 
     /* Clear adverising and scanning states. */
@@ -494,7 +503,7 @@ ble_hs_timer_sched(int32_t ticks_from_now)
     }
     else if (ble_npl_callout_get_ticks(&ble_hs_timer) <= ble_npl_time_get()) {
         /* Reset timer if currect time is later than expiration time. */
-        BLE_HS_LOG(DEBUG,"exp_time:%d.now:%d.ticks:%d.active:%d.Need reset.",ble_npl_callout_get_ticks(&ble_hs_timer),ble_npl_time_get(),ticks_from_now,ble_npl_callout_is_active(&ble_hs_timer));
+        BLE_HS_LOG(DEBUG,"exp_time:%" PRId32".now:%" PRId32".ticks:%" PRId32".active:%" PRId16".Need reset.",ble_npl_callout_get_ticks(&ble_hs_timer),ble_npl_time_get(),ticks_from_now,ble_npl_callout_is_active(&ble_hs_timer));
         ble_hs_timer_reset(ticks_from_now);
     }
 }
@@ -529,7 +538,7 @@ ble_hs_sched_start(void)
 static void
 ble_hs_event_rx_hci_ev(struct ble_npl_event *ev)
 {
-    const struct ble_hci_ev *hci_ev;
+    struct ble_hci_ev *hci_ev;
     int rc;
 
     hci_ev = ble_npl_event_get_arg(ev);
@@ -539,11 +548,6 @@ ble_hs_event_rx_hci_ev(struct ble_npl_event *ev)
 
     rc = os_memblock_put(&ble_hs_hci_ev_pool, ev);
     BLE_HS_DBG_ASSERT_EVAL(rc == 0);
-
-#if BLE_MONITOR
-    ble_monitor_send(BLE_MONITOR_OPCODE_EVENT_PKT, hci_ev,
-                     hci_ev->length + sizeof(*hci_ev));
-#endif
 
     ble_hs_hci_evt_process(hci_ev);
 }
@@ -605,16 +609,17 @@ ble_hs_enqueue_hci_event(uint8_t *hci_evt)
     struct ble_npl_event *ev;
 
     ev = os_memblock_get(&ble_hs_hci_ev_pool);
-#if CONFIG_NIMBLE_STACK_USE_MEM_POOLS
+#if CONFIG_BT_LE_CONTROLLER_NPL_OS_PORTING_SUPPORT
     if (ev && ble_hs_evq->eventq) {
 #else
     if (ev && ble_hs_evq->q) {
 #endif
+        memset (ev, 0, sizeof *ev);
         ble_npl_event_init(ev, ble_hs_event_rx_hci_ev, hci_evt);
         ble_npl_eventq_put(ble_hs_evq, ev);
     } else {
 	/* Either ev is NULL or queue doesn't exist */
-        ble_hci_trans_buf_free(hci_evt);
+        ble_transport_free(hci_evt);
     }
 }
 
@@ -717,6 +722,16 @@ ble_hs_rx_data(struct os_mbuf *om, void *arg)
 {
     int rc;
 
+// #if ((BT_HCI_LOG_INCLUDED == TRUE) && SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
+//     uint16_t len = OS_MBUF_PKTHDR(om)->omp_len + 1;
+//     uint8_t *data = (uint8_t *)malloc(len);
+//     assert(data != NULL);
+//     data[0] = 0x02;
+//     os_mbuf_copydata(om, 0, len - 1, &data[1]);
+//     bt_hci_log_record_hci_data(HCI_LOG_DATA_TYPE_C2H_ACL, &data[1], len - 1);
+//     free(data);
+// #endif // (BT_HCI_LOG_INCLUDED == TRUE)
+
     /* If flow control is enabled, mark this packet with its corresponding
      * connection handle.
      */
@@ -743,11 +758,18 @@ ble_hs_rx_data(struct os_mbuf *om, void *arg)
 int
 ble_hs_tx_data(struct os_mbuf *om)
 {
-#if BLE_MONITOR
-    ble_monitor_send_om(BLE_MONITOR_OPCODE_ACL_TX_PKT, om);
-#endif
+// #if ((BT_HCI_LOG_INCLUDED == TRUE) && SOC_ESP_NIMBLE_CONTROLLER && CONFIG_BT_CONTROLLER_ENABLED)
+//     uint16_t len = 0;
+//     uint8_t data[MYNEWT_VAL(BLE_TRANSPORT_ACL_SIZE) + 1];
+//     data[0] = 0x02;
+//     len++;
+//     os_mbuf_copydata(om, 0, OS_MBUF_PKTLEN(om), &data[1]);
+//     len += OS_MBUF_PKTLEN(om);
 
-    return ble_hci_trans_hs_acl_tx(om);
+//     bt_hci_log_record_hci_data(data[0], &data[1], len - 1);
+// #endif
+
+    return ble_transport_to_ll_acl(om);
 }
 
 void
@@ -790,10 +812,16 @@ ble_hs_init(void)
     SYSINIT_PANIC_ASSERT(rc == 0);
 #endif
 
+
 #if NIMBLE_BLE_CONNECT
     rc = ble_l2cap_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
+#endif
 
+    rc = ble_gap_init();
+    SYSINIT_PANIC_ASSERT(rc == 0);
+
+#if NIMBLE_BLE_CONNECT
     rc = ble_att_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
 
@@ -803,11 +831,14 @@ ble_hs_init(void)
     rc = ble_gattc_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
 
+#if MYNEWT_VAL(BLE_GATT_CACHING)
+    rc = ble_gattc_cache_conn_init();
+    SYSINIT_PANIC_ASSERT(rc == 0);
+#endif
+
     rc = ble_gatts_init();
     SYSINIT_PANIC_ASSERT(rc == 0);
 #endif
-    rc = ble_gap_init();
-    SYSINIT_PANIC_ASSERT(rc == 0);
 
     ble_hs_stop_init();
 
@@ -831,14 +862,6 @@ ble_hs_init(void)
     ble_hs_evq_set(nimble_port_get_dflt_eventq());
 #endif
 
-    /* Configure the HCI transport to communicate with a host. */
-    ble_hci_trans_cfg_hs(ble_hs_hci_rx_evt, NULL, ble_hs_rx_data, NULL);
-
-#if BLE_MONITOR
-    rc = ble_monitor_init();
-    SYSINIT_PANIC_ASSERT(rc == 0);
-#endif
-
     /* Enqueue the start event to the default event queue.  Using the default
      * queue ensures the event won't run until the end of main().  This allows
      * the application to configure this package in the meantime.
@@ -851,12 +874,36 @@ ble_hs_init(void)
     ble_npl_eventq_put(nimble_port_get_dflt_eventq(), &ble_hs_ev_start_stage1);
 #endif
 #endif
-
-#if BLE_MONITOR
-    ble_monitor_new_index(0, (uint8_t[6]){ }, "nimble0");
-#endif
     /* Initialize npl variables related to hs flow control */
     ble_hs_flow_init();
+}
+
+/* Transport APIs for HS side */
+
+int
+ble_transport_to_hs_evt_impl(void *buf)
+{
+    return ble_hs_hci_rx_evt(buf, NULL);
+}
+
+int
+ble_transport_to_hs_acl_impl(struct os_mbuf *om)
+{
+    return ble_hs_rx_data(om, NULL);
+}
+
+int
+ble_transport_to_hs_iso_impl(struct os_mbuf *om)
+{
+    os_mbuf_free_chain(om);
+
+    return 0;
+}
+
+void
+ble_transport_hs_init(void)
+{
+    ble_hs_init();
 }
 
 void
@@ -867,8 +914,6 @@ ble_hs_deinit(void)
 #if BLE_MONITOR
     ble_monitor_deinit();
 #endif
-
-    ble_hci_trans_cfg_hs(NULL, NULL, NULL, NULL);
 
     ble_npl_mutex_deinit(&ble_hs_mutex);
 
@@ -894,4 +939,7 @@ ble_hs_deinit(void)
 
     ble_npl_callout_deinit(&ble_hs_timer);
 
+#if (MYNEWT_VAL(BLE_HOST_BASED_PRIVACY))
+    ble_hs_resolv_deinit();
+#endif
 }
