@@ -1,10 +1,13 @@
 
 #include "./ESP32-USBSoftHost.hpp"
 
-#if defined CONFIG_ESP_SYSTEM_MEMPROT_FEATURE || defined FORCE_TEMPLATED_NOPS || defined CONFIG_IDF_TARGET_ESP32S3
-  #pragma message "memory protection features disabled, templated asm nop() will be used"
+#if defined USE_TEMPLATED_NOPS
+  // #pragma message "memory protection features disabled, templated asm nop() will be used"
   #include "nops.hpp"
 #endif
+
+#include "esp_clk_tree.h"
+#include "soc/clk_tree_defs.h"
 
 static xQueueHandle usb_msg_queue = NULL;
 
@@ -120,55 +123,30 @@ void Default_USB_EPDescCb(uint8_t ref, int cfgCount, int epdCount, void*vepd, si
 
 
 
+static bool ush_timer_on_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *ushptr)
+{
+  //// stop the timer when the alarm occurs
+  // gptimer_stop(timer);
 
-#if !defined USE_NATIVE_GROUP_TIMERS
+  usb_process();
 
-  typedef struct
-  {
-      int type;  // the type of timer's event
-      int timer_group;
-      int timer_idx;
-      uint64_t timer_counter_value;
-  } timer_event_t;
-  static xQueueHandle timer_queue = NULL;
+  //// set counter & re-arm alarm
+  // gptimer_set_raw_count(timer, edata->alarm_value);
+  // gptimer_alarm_config_t alarm_config = {
+  //     .alarm_count = edata->alarm_value + ALARM_INTERVAL, // Next alarm in 1000000us (1s) from the current alarm
+  //     //.reload_count = 0,
+  //     .flags = { .auto_reload_on_alarm = false },
+  // };
+  //// Update the alarm value
+  // gptimer_set_alarm_action(timer, &alarm_config);
+  //// resume the timer
+  // gptimer_start(timer);
 
-  void IRAM_ATTR timer_group0_isr(void *para)
-  {
-    // this is mainly a group-timer layer for esp-idf 3.x
-    // most of this is handled by the SDK since esp-idf 4.x
-    int timer_idx = (int) para;
-    uint32_t intr_status = TIMERG0.int_st_timers.val;// Retrieve the interrupt status and the counter value from the timer that reported the interrupt
-    TIMERG0.hw_timer[timer_idx].update = 1;
-    uint64_t timer_counter_value = ((uint64_t) TIMERG0.hw_timer[timer_idx].cnt_high) << 32 | TIMERG0.hw_timer[timer_idx].cnt_low;
-    timer_event_t evt; // Prepare basic event data that will be then sent back to the main program task
-    evt.timer_group = 0;
-    evt.timer_idx = timer_idx;
-    evt.timer_counter_value = timer_counter_value;
-    usb_process();// process USB signal
-    if ((intr_status & BIT(timer_idx)) && timer_idx == TIMER_0) { // Clear the interrupt and update the alarm time for the timer with without reload
-      evt.type = 1; // no reload
-      TIMERG0.int_clr_timers.t0 = 1;
-      timer_counter_value += (uint64_t) (TIMER_INTERVAL0_SEC * TIMER_SCALE);
-      TIMERG0.hw_timer[timer_idx].alarm_high = (uint32_t) (timer_counter_value >> 32);
-      TIMERG0.hw_timer[timer_idx].alarm_low = (uint32_t) timer_counter_value;
-    }
-    TIMERG0.hw_timer[timer_idx].config.alarm_en = TIMER_ALARM_EN; // After the alarm has been triggered we need enable it again, so it is triggered the next time
-    xQueueSendFromISR(timer_queue, &evt, NULL); // Now just send the event data back to the main program task
+  // Return whether a high-priority task was awakened during the above operations to notify the scheduler to switch tasks
+  return false;
+}
 
-  }
 
-#else
-
-  void IRAM_ATTR timer_group0_isr(void *para)
-  {
-    timer_group_clr_intr_status_in_isr(TIMER_GROUP_0, TIMER_0);
-    //taskENTER_CRITICAL();
-    usb_process();
-    //taskEXIT_CRITICAL();
-    timer_group_enable_alarm_in_isr(TIMER_GROUP_0, TIMER_0);
-  }
-
-#endif
 
 
 
@@ -176,19 +154,28 @@ bool USB_SOFT_HOST::init( usb_pins_config_t pconf, ondetectcb_t onDetectCB, prin
 {
   Serial.println("Attaching onDetectCB");
   setOndetectCb( onDetectCB );
-  Serial.println("Attaching onDisconnectCB");
-  setOndisconnectCb( onDisconnectCB );
+
+  if( onDisconnectCB ) {
+    Serial.println("Attaching onDisconnectCB");
+    setOndisconnectCb( onDisconnectCB );
+  }
+
   Serial.println("Attaching onDataCB");
   setPrintCb( onDataCB );
+
   Serial.println("Attaching onUSBMessageDecode");
   setUSBMessageCb( onUSBMessageDecode );
-  Serial.println("Attaching onTickCB");
-  USB_SOFT_HOST::setTaskTicker( onTickCB );
+
+  if( onTickCB ) {
+    Serial.println("Attaching onTickCB");
+    USB_SOFT_HOST::setTaskTicker( onTickCB );
+  }
+
   if( _init( pconf ) ) {
     Serial.println("Attaching Timer Task");
     xTaskCreatePinnedToCore(USB_SOFT_HOST::TimerTask, "USB Soft Host Timer Task", 8192, NULL, priority, NULL, core);
     //xTaskCreate(USB_SOFT_HOST::TimerTask, "USB Soft Host Timer Task", 8192, NULL, priority, NULL);
-    Serial.printf("USB Soft Host Group timer task is now running on core #%d with priority %d\n", core, priority);
+    Serial.printf("USB Soft Host Timer task is now running on core #%d with priority %d\n", core, priority);
     return true;
   }
   return false;
@@ -222,18 +209,29 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
 {
   if( inited ) return false;
 
-  #if !defined USE_NATIVE_GROUP_TIMERS
-    Serial.println("Using custom group timer");
-    timer_queue = xQueueCreate( 10, sizeof(timer_event_t) );
-  #endif
-
   Serial.println("Creating message queue");
 
   usb_msg_queue = xQueueCreate( 10, sizeof(struct USBMessage) );
 
   Serial.println("Setting USB Delay");
 
-  setCPUDelay(4);
+  static portMUX_TYPE my_spinlock = portMUX_INITIALIZER_UNLOCKED;
+
+  for(uint8_t i=0;i<0xff;i++)
+  {
+    auto cpuDelay = nops[i];
+    // using asm "memory" trick +lock to prevent the compiler from optimizing the benchmark
+    portENTER_CRITICAL(&my_spinlock);
+    asm volatile("" ::: "memory");
+    auto start = esp_cpu_get_cycle_count();
+    cpuDelay();
+    auto end = esp_cpu_get_cycle_count()/*-cycle_count_cycles*/;
+    asm volatile("" ::: "memory");
+    portEXIT_CRITICAL(&my_spinlock);
+    uint64_t elapsed = (end-start);
+    //float avg = elapsed/1000.0f;
+    printf("Nop[%02x] ~= %llu cycles\n", i, elapsed);
+  }
 
   Serial.println("Setting up pins");
 
@@ -244,47 +242,80 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
     (gpio_num_t)pconf.dp3, (gpio_num_t)pconf.dm3
   );
 
-  Serial.printf("Seleting SCL (blink) Pin #%d\n", blink_gpio );
+  if( blink_gpio != GPIO_NUM_NC ) {
+    Serial.printf("Seleting SCL (blink) Pin #%d\n", blink_gpio );
+    esp_rom_gpio_pad_select_gpio( blink_gpio );
+    gpio_set_direction( blink_gpio, GPIO_MODE_OUTPUT);
+  }
 
-  gpio_pad_select_gpio( blink_gpio );
-  gpio_set_direction( blink_gpio, GPIO_MODE_OUTPUT);
+  Serial.printf("Note: this SOC has %d PINS\n", SOC_GPIO_PIN_COUNT);
 
   Serial.println("Creating timer config");
 
-  #if defined ESP32 || defined ESP32S2
-    timer_config_t config;
-    config.divider     = TIMER_DIVIDER;
-    config.counter_dir = TIMER_COUNT_UP;
-    config.counter_en  = TIMER_PAUSE;
-    config.alarm_en    = TIMER_ALARM_EN;
-    config.intr_type   = TIMER_INTR_MAX;
-    config.auto_reload = (timer_autoreload_t) 1; // fix for ¬invalid conversion from 'int' to 'timer_autoreload_t'¬ thanks rudi ;-)
-  #elif defined ESP32C3
-    timer_config_t config =
-    {
-      .clk_src     = TIMER_SRC_CLK_XTAL, // TIMER_SRC_CLK_DEFAULT ?
-      .alarm_en    = TIMER_ALARM_EN,//enable timer alarm
-      .counter_en  = TIMER_PAUSE,//starts counting counter once timer_init called
-      .intr_type   = TIMER_INTR_MAX,
-      .counter_dir = TIMER_COUNT_UP,//counts from 0 to counter value
-      .auto_reload = TIMER_AUTORELOAD_EN,// reloads counter automatically
-      .divider     = TIMER_DIVIDER
-    };
-  //#elif defined ESP32S2
+  uint32_t apb_freq_hz = 0;
+  esp_clk_tree_src_get_freq_hz( SOC_MOD_CLK_APB, ESP_CLK_TREE_SRC_FREQ_PRECISION_CACHED, &apb_freq_hz );
+
+  #if defined CONFIG_IDF_TARGET_ESP32P4
+    #define GPTIMER_CLK_SRC GPTIMER_CLK_SRC_XTAL // GPTIMER_CLK_SRC_DEFAULT // GPTIMER_CLK_SRC_PLL_F80M
   #else
-    #error "Invalid board"
+    #define GPTIMER_CLK_SRC GPTIMER_CLK_SRC_DEFAULT
   #endif
 
-  Serial.println("Init timer");
-  timer_init(TIMER_GROUP_0, TIMER_0, &config);
-  timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x00000000ULL);
-  timer_set_alarm_value(TIMER_GROUP_0, TIMER_0, (double)TIMER_INTERVAL0_SEC * TIMER_SCALE);
-  Serial.println("Enable interrupt");
-  timer_enable_intr(TIMER_GROUP_0, TIMER_0);
-  Serial.println("Register ISR");
-  timer_isr_register(TIMER_GROUP_0, TIMER_0, timer_group0_isr, (void *) TIMER_0, intr_alloc_flags, NULL);
-  Serial.println("Start timer");
-  timer_start(TIMER_GROUP_0, TIMER_0);
+
+  uint32_t timer_resolution_hz = 1000000; // 1MHz
+  uint64_t alarm_interval = 1000; // 1ms
+
+  Serial.printf("Timer resolution = %lu Hz\n", timer_resolution_hz);
+  Serial.printf("Timer alarm count = %llu ticks = 1ms\n", alarm_interval);
+
+
+  gptimer_config_t timer_config = gptimer_config_t();
+  {
+      // TODO: figure out the right value for resolution_hz
+      timer_config.clk_src       = GPTIMER_CLK_SRC; // GPTIMER_CLK_SRC_DEFAULT or GPTIMER_CLK_SRC_PLL_F80M ; // clock source
+      timer_config.direction     = GPTIMER_COUNT_UP ;              // Counting direction is up
+      timer_config.resolution_hz = timer_resolution_hz ;  // Note: Preferred 40MHz, but usual resolution for oversampling USB-LS is 48 MHz, which gptimer can't do
+      // timer_config.intr_priority = 16 ; // GPTimer interrupt priority, if set to 0, the driver will try to allocate an interrupt with a relative low priority (1,2,3)
+      // timer_config.intr_shared = 1, // Set true, the timer interrupt number can be shared with other peripherals
+      // timer_config.flags = {.allow_pd }
+  };
+
+
+  // Create a timer instance
+  ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &gptimer));
+
+  gptimer_alarm_config_t alarm_config = gptimer_alarm_config_t();
+  {
+      // TODO: figure out the right value for alarm_count
+      alarm_config.reload_count = 0; // When the alarm event occurs, the timer will automatically reload to 0
+      alarm_config.alarm_count = alarm_interval ; // Set the actual alarm period, since the resolution is 1us, 1000000 represents 1s
+      alarm_config.flags.auto_reload_on_alarm = true ; // enable auto-reload function
+  };
+
+
+  // Set the timer's alarm action
+  ESP_ERROR_CHECK(gptimer_set_alarm_action(gptimer, &alarm_config));
+
+  gptimer_event_callbacks_t cbs = {
+      .on_alarm = ush_timer_on_alarm_cb, // Call the user callback function when the alarm event occurs
+  };
+  // Register timer event callback functions, allowing user context to be carried
+  ESP_ERROR_CHECK(gptimer_register_event_callbacks(gptimer, &cbs, this));
+
+  // Enable the timer
+  ESP_ERROR_CHECK(gptimer_enable(gptimer));
+  // Start the timer
+  ESP_ERROR_CHECK(gptimer_start(gptimer));
+
+  // // Check the timer's resolution
+  // uint32_t resolution_hz;
+  // ESP_ERROR_CHECK(gptimer_get_resolution(gptimer, &resolution_hz));
+  // // Read the current count value
+  // uint64_t count;
+  // ESP_ERROR_CHECK(gptimer_get_raw_count(gptimer, &count));
+  // // (Optional) Convert the count value to time units (seconds)
+  // double time = (double)count / resolution_hz;
+  // Serial.printf("Actual timer settings: %lu Hz\n", resolution_hz);
 
   inited = true;
 
@@ -376,7 +407,7 @@ void USB_SOFT_HOST::TimerPause()
 {
   if( !paused ) {
     log_d("Pausing timer");
-    timer_pause(TIMER_GROUP_0, TIMER_0);
+    gptimer_stop(gptimer);
     paused = true;
     vTaskDelay(1);
   } else {
@@ -388,7 +419,7 @@ void USB_SOFT_HOST::TimerResume()
 {
   if( paused ) {
     log_d("Resuming timer");
-    timer_start(TIMER_GROUP_0, TIMER_0);
+    gptimer_start(gptimer);
     paused = false;
     vTaskDelay(1);
   } else {
@@ -402,11 +433,6 @@ void USB_SOFT_HOST::TimerTask(void *arg)
 {
   while (1) {
     struct USBMessage msg;
-
-    #if !defined USE_NATIVE_GROUP_TIMERS
-      timer_event_t evt;
-      xQueueReceive(timer_queue, &evt, portMAX_DELAY);
-    #endif
 
     if( xQueueReceive(usb_msg_queue, &msg, 0) ) {
       if( printDataCB ) {

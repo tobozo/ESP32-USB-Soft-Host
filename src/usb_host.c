@@ -36,18 +36,17 @@
      - Arduino IDE compliance (mostly code regression to esp-idf 3.x)
      - Added callbacks (data and device detection)
    Changes by tobozo (aug 2022):
-     - Quick & dirty cpuDelay() to enable ESP32-S2 support when CONFIG_ESP_SYSTEM_MEMPROT_FEATURE is enabled (default on Arduino IDE)
+     - Quick & dirty cpuDelay() to enable ESP32-S2/S3/P4 support when CONFIG_ESP_SYSTEM_MEMPROT_FEATURE is enabled (default on Arduino IDE)
      - Some reformatting and refactoring
+   Changes by tobozo (nov 2026)
+     - Rewrote most direct GPIO C macros into C functions
+     - Now handles pins higher than 31
+     - Testing support for ESP32P4
 
 \*/
 
 
 #include "usb_host.h"
-
-// Arduino IDE complains about volatile at init, but we don't care
-#pragma GCC diagnostic ignored "-Wdiscarded-qualifiers"
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#pragma GCC diagnostic ignored "-Wunused-value"
 
 
 #define T_START      0b00000001
@@ -95,44 +94,51 @@ int TM_OUT              = 64;    //receive time out no activity on bus
   #define TOUT  (TM_OUT)
 #endif
 
-uint32_t _getCycleCount32()
+// some syntax sweetener
+#define USH_STATIC static inline __attribute__((always_inline))
+
+
+//static portMUX_TYPE my_spinlock = portMUX_INITIALIZER_UNLOCKED;
+
+USH_STATIC uint32_t _getCycleCount32()
 {
-  uint32_t ccount = cpu_hal_get_cycle_count();
+  // portENTER_CRITICAL(&my_spinlock);
+  // asm volatile("" ::: "memory");
+  uint32_t ccount = esp_cpu_get_cycle_count();
+  // asm volatile("" ::: "memory");
+  // portEXIT_CRITICAL(&my_spinlock);
   return  ccount;
 }
-uint8_t _getCycleCount8d8(void)
+
+
+USH_STATIC uint8_t _getCycleCount8d8(void)
 {
-  uint32_t ccount = cpu_hal_get_cycle_count();
+  // portENTER_CRITICAL(&my_spinlock);
+  // asm volatile("" ::: "memory");
+  uint32_t ccount = esp_cpu_get_cycle_count();
+  // asm volatile("" ::: "memory");
+  // portEXIT_CRITICAL(&my_spinlock);
   return ccount>>3;
 }
 
 
-#define SE_J  { *snd[1][0] = (1 << DM_PIN);*snd[1][1] = (1 << DP_PIN); }
-#define SE_0  { *snd[2][0] = (1 << DM_PIN);*snd[2][1] = (1 << DP_PIN); }
-
-#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
-  #define SET_I { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DM_PIN]); GPIO.enable_w1tc = (1 << DP_PIN) | (1 << DM_PIN);  }
-  #define SET_O { GPIO.enable_w1ts = (1 << DP_PIN) | (1 << DM_PIN);  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DM_PIN]);  }
-  #define READ_BOTH_PINS (((GPIO.in&RD_MASK)<<8)>>RD_SHIFT)
-  uint32_t * snd[4][2]  =
-  {
-    {&GPIO.out_w1tc,&GPIO.out_w1ts},
-    {&GPIO.out_w1ts,&GPIO.out_w1tc},
-    {&GPIO.out_w1tc,&GPIO.out_w1tc},
-    {&GPIO.out_w1tc,&GPIO.out_w1tc}
-  } ;
-#else // ESP32C3
-  #define SET_I { PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DM_PIN]);  gpio_ll_output_disable(&GPIO,DM_PIN); gpio_ll_output_disable(&GPIO,DP_PIN);}
-  #define SET_O { GPIO.enable_w1ts.val = (1 << DP_PIN) | (1 << DM_PIN);  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DP_PIN]); PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DM_PIN]);  }
-  #define READ_BOTH_PINS (((GPIO.in.val&RD_MASK)<<8)>>RD_SHIFT)
-  uint32_t * snd[4][2]  =
-  {
-    {&GPIO.out_w1tc.val,&GPIO.out_w1ts.val},
-    {&GPIO.out_w1ts.val,&GPIO.out_w1tc.val},
-    {&GPIO.out_w1tc.val,&GPIO.out_w1tc.val},
-    {&GPIO.out_w1tc.val,&GPIO.out_w1tc.val}
-  } ;
-#endif
+// ----------------------------------------------------
+// | Model     | SOC_GPIO_PIN_COUNT | Pin Index Range |
+// |-----------|--------------------|-----------------|
+// | ESP32     |                 40 |          0 – 39 |
+// | ESP32-S2  |                 47 |          0 – 46 |
+// | ESP32-S3  |                 49 |          0 – 48 |
+// | ESP32-S31 |                 62 |          0 – 61 |
+// | ESP32-C2  |                 21 |          0 – 20 |
+// | ESP32-C3  |                 22 |          0 – 21 |
+// | ESP32-C5  |                 29 |          0 – 28 |
+// | ESP32-C6  |                 31 |          0 – 30 |
+// | ESP32-C61 |                 30 |          0 – 29 |
+// | ESP32-H2  |                 28 |          0 – 27 |
+// | ESP32-H21 |                 26 |          0 – 25 |
+// | ESP32-H4  |                 40 |          0 – 39 |
+// | ESP32-P4  |                 55 |          0 – 54 |
+// ----------------------------------------------------
 
 //must be setup each time with setPins
 uint32_t DP_PIN;
@@ -145,6 +151,171 @@ uint16_t P_ONE;
 uint32_t RD_MASK;
 uint32_t RD_SHIFT;
 //end must be setup each time with setPins
+
+uint32_t pinOffset = 0;
+
+// GPIO registers and functions, with an attempt to handle pin numbers > 31
+/**********************************************************************/
+
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3 // more than 31 pins, same GPIO layout
+
+    #define GPIO_IN  GPIO.in
+    #define GPIO_IN1 GPIO.in1.val
+    #define GPIO_WRITE_LOW GPIO.out_w1tc
+    #define GPIO_WRITE_LOW1 GPIO.out1_w1tc.val
+    #define GPIO_WRITE_HIGH  GPIO.out_w1ts
+    #define GPIO_WRITE_HIGH1 GPIO.out1_w1ts.val
+    #define GPIO_DMODE_INPUT GPIO.enable_w1tc
+    #define GPIO_DMODE_INPUT1 GPIO.enable1_w1tc.val
+    #define GPIO_DMODE_OUTPUT  GPIO.enable_w1ts
+    #define GPIO_DMODE_OUTPUT1 GPIO.enable1_w1ts.val
+
+#elif CONFIG_IDF_TARGET_ESP32P4
+
+    #define GPIO_IN  GPIO.in.val
+    #define GPIO_IN1 GPIO.in1.val
+    #define GPIO_WRITE_LOW GPIO.out_w1tc.val
+    #define GPIO_WRITE_LOW1 GPIO.out1_w1tc.val
+    #define GPIO_WRITE_HIGH  GPIO.out_w1ts.val
+    #define GPIO_WRITE_HIGH1 GPIO.out1_w1ts.val
+    #define GPIO_DMODE_INPUT GPIO.enable_w1tc.val
+    #define GPIO_DMODE_INPUT1 GPIO.enable1_w1tc.val
+    #define GPIO_DMODE_OUTPUT  GPIO.enable_w1ts.val
+    #define GPIO_DMODE_OUTPUT1 GPIO.enable1_w1ts.val
+
+#elif CONFIG_IDF_TARGET_ESP32C3 // only one gpio rail
+
+    #define GPIO_IN  GPIO.in.val
+    #define GPIO_WRITE_LOW GPIO.out_w1tc.val
+    #define GPIO_WRITE_HIGH  GPIO.out_w1ts.val
+    #define GPIO_DMODE_INPUT GPIO.enable_w1tc.val
+    #define GPIO_DMODE_OUTPUT  GPIO.enable_w1ts.val
+
+#else
+
+  #error "GPIO Isn't mapped for this device"
+
+#endif
+
+
+
+volatile uint32_t * snd[4][2] = {{NULL,NULL},{NULL,NULL},{NULL,NULL},{NULL,NULL}};
+
+volatile uint32_t * snd0[4][2]  =
+{
+  {&GPIO_WRITE_LOW, &GPIO_WRITE_HIGH},
+  {&GPIO_WRITE_HIGH,&GPIO_WRITE_LOW},
+  {&GPIO_WRITE_LOW, &GPIO_WRITE_LOW},
+  {&GPIO_WRITE_LOW, &GPIO_WRITE_LOW}
+} ;
+
+#if SOC_GPIO_PIN_COUNT > 31 // handle secondary GPIO rail
+
+  volatile uint32_t * snd1[4][2]  =
+  {
+    {&GPIO_WRITE_LOW1, &GPIO_WRITE_HIGH1},
+    {&GPIO_WRITE_HIGH1,&GPIO_WRITE_LOW1},
+    {&GPIO_WRITE_LOW1, &GPIO_WRITE_LOW1},
+    {&GPIO_WRITE_LOW1, &GPIO_WRITE_LOW1}
+  } ;
+
+#endif
+
+// forward declarations
+static void setGPIORail();
+static void GPIOWriteLow(uint32_t pin);
+static void GPIOWriteHigh(uint32_t pin);
+static uint32_t GPIOReadBothPins();
+static void setDMHighDPLow();
+static void setDMLowDPLow();
+static void setGPIOModeInput();
+static void setGPIOModeOutput();
+
+
+USH_STATIC void setGPIORail()
+{
+  #if SOC_GPIO_PIN_COUNT > 31
+    memcpy(snd, pinOffset==0 ? snd0 : snd1, sizeof(volatile uint32_t *)*8);
+  #else
+    memcpy(snd, snd0 sizeof(volatile uint32_t *)*8);
+  #endif
+}
+
+
+USH_STATIC void GPIOWriteLow(uint32_t pin)
+{
+  if ( pin < 32 )
+    GPIO_WRITE_LOW = ((uint32_t)1 << pin);
+  #if SOC_GPIO_PIN_COUNT > 31
+  else if ( pin < SOC_GPIO_PIN_COUNT )
+    GPIO_WRITE_LOW1 = ((uint32_t)1 << (pin - 32));
+  #endif
+}
+
+
+USH_STATIC void GPIOWriteHigh(uint32_t pin)
+{
+  if ( pin < 32 )
+    GPIO_WRITE_HIGH = ((uint32_t)1 << pin);
+  #if SOC_GPIO_PIN_COUNT > 31
+  else if ( pin < SOC_GPIO_PIN_COUNT )
+    GPIO_WRITE_HIGH1 = ((uint32_t)1 << (pin - 32));
+  #endif
+}
+
+
+USH_STATIC void setDMHighDPLow()
+{
+  GPIOWriteHigh(DM_PIN);
+  GPIOWriteLow(DP_PIN);
+}
+
+
+USH_STATIC void setDMLowDPLow()
+{
+  GPIOWriteLow(DM_PIN);
+  GPIOWriteLow(DP_PIN);
+}
+
+
+USH_STATIC void setGPIOModeInput()
+{
+  PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DP_PIN]);
+  PIN_INPUT_ENABLE(GPIO_PIN_MUX_REG[DM_PIN]);
+  if ( DP_PIN < 32 && DM_PIN <32 )
+    GPIO_DMODE_INPUT = ((uint32_t)1 << DP_PIN) | ((uint32_t)1 << DM_PIN);
+  #if SOC_GPIO_PIN_COUNT > 31
+  else if ( DP_PIN < SOC_GPIO_PIN_COUNT && DM_PIN < SOC_GPIO_PIN_COUNT )
+    GPIO_DMODE_INPUT1 = ((uint32_t)1 << (DP_PIN - 32)) | ((uint32_t)1 << (DM_PIN - 32));
+  #endif
+}
+
+
+USH_STATIC void setGPIOModeOutput()
+{
+  if ( DP_PIN < 32 && DM_PIN <32 )
+    GPIO_DMODE_OUTPUT = ((uint32_t)1 << (DP_PIN)) | ((uint32_t)1 << (DM_PIN));
+  #if SOC_GPIO_PIN_COUNT > 31
+  else if ( DP_PIN < SOC_GPIO_PIN_COUNT && DM_PIN < SOC_GPIO_PIN_COUNT )
+    GPIO_DMODE_OUTPUT1 = ((uint32_t)1 << (DP_PIN - 32)) | ((uint32_t)1 << (DM_PIN - 32));
+  #endif
+  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DP_PIN]);
+  PIN_INPUT_DISABLE(GPIO_PIN_MUX_REG[DM_PIN]);
+}
+
+
+USH_STATIC uint32_t GPIOReadBothPins()
+{
+  #if SOC_GPIO_PIN_COUNT > 31
+  if( pinOffset > 0 )
+    return (((GPIO_IN1&RD_MASK)<<8)>>RD_SHIFT);
+  else
+  #endif
+    return (((GPIO_IN&RD_MASK)<<8)>>RD_SHIFT);
+}
+
+/**********************************************************************/
+
 
 // temporary used insize lowlevel
 volatile uint8_t received_NRZI_buffer_bytesCnt;
@@ -166,7 +337,7 @@ uint8_t decoded_receive_buffer[DEF_BUFF_SIZE];
 void (*cpuDelay)() = NULL;
 
 
-#if defined CONFIG_ESP_SYSTEM_MEMPROT_FEATURE || defined FORCE_TEMPLATED_NOPS || defined CONFIG_IDF_TARGET_ESP32S3
+#if defined CONFIG_ESP_SYSTEM_MEMPROT_FEATURE || defined FORCE_TEMPLATED_NOPS || defined CONFIG_IDF_TARGET_ESP32S3 || defined CONFIG_IDF_TARGET_ESP32P4
   // memory protection enabled, MALLOC_CAP_EXEC can't be used
   // use c++ templated nop() instead (see nops.hpp)
   typedef void (*CpuDelay_t)();
@@ -183,7 +354,7 @@ void (*cpuDelay)() = NULL;
     #define SDELAYMALLOC(X) malloc(X)
     #define SDELAYREALLOC(X,Y,Z) heap_caps_realloc(X,Y,Z)
     #define SDELAYRMASK MALLOC_CAP_EXEC
-  #elif CONFIG_IDF_TARGET_ESP32C3
+  #elif CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32P4
     #define MAX_DELAY_CODE_SIZE 0x210
     #define SDELAYMALLOC(X) malloc(X)
     #define SDELAYREALLOC(X,Y,Z) heap_caps_realloc(X,Y,Z)
@@ -216,7 +387,7 @@ void (*cpuDelay)() = NULL;
       *ptr++ = 0xf0;
       *ptr++ = 0x00;
       *ptr++ = 0x00;
-    #elif CONFIG_IDF_TARGET_ESP32C3
+    #elif CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32P4
       DEBUG_OPCODE("Making RISCV Opcodes for ESP32C3\n");
       //put head of delay procedure
       for(int k=0;k<ticks;k++) {
@@ -378,9 +549,9 @@ typedef struct
   int transmitL1Bytes;
   uint8_t transmitL1[DEF_BUFF_SIZE];
 
-} sUsbContStruct;
+} sUsbCont_t;
 
-sUsbContStruct * current;
+sUsbCont_t * current;
 
 
 #ifdef WR_SIMULTA
@@ -670,7 +841,7 @@ int parse_received_NRZI_buffer()
 void sendOnly()
 {
   uint8_t k;
-  SET_O;
+  setGPIOModeOutput();
   #ifdef WR_SIMULTA
     uint32_t out_base = GPIO.out;
     sndA[0] = (out_base | DP_PIN_M) &~DM_PIN_M;
@@ -684,12 +855,13 @@ void sendOnly()
     #ifdef WR_SIMULTA
       GPIO.out = sndA[transmit_NRZI_buffer[k]];
     #else
+      // TODO: handle hi/low GPIO rail
       *snd[transmit_NRZI_buffer[k]][0] = DM_PIN_M;
       *snd[transmit_NRZI_buffer[k]][1] = DP_PIN_M;
     #endif
   }
   restart();
-  SET_I;
+  setGPIOModeInput();
 }
 
 
@@ -702,7 +874,7 @@ void sendRecieveNParse()
   register uint32_t _R4;// = READ_BOTH_PINS;
 
 START:
-  _R4 = READ_BOTH_PINS;
+  _R4 = GPIOReadBothPins();
   *STORE = _R4 | _getCycleCount8d8();
   STORE++;
   _R3 = _R4;
@@ -710,7 +882,7 @@ START:
   //if(_R4!=_R3)  goto START;
   if( _R3 ) {
     for(int k=0;k<TOUT;k++) {
-      _R4   = READ_BOTH_PINS;
+      _R4   = GPIOReadBothPins();
       if(_R4!=_R3)  goto START;
     }
   }
@@ -801,8 +973,8 @@ void timerCallBack()
   decoded_receive_buffer_clear();
 
   if(current->cb_Cmd==CB_CHECK) {
-    SET_I;
-    current->wires_last_state = READ_BOTH_PINS>>8;
+    setGPIOModeInput();
+    current->wires_last_state = GPIOReadBothPins()>>8;
     if(current->wires_last_state==M_ONE) {
       // low speed
       hid_device_connected = true;
@@ -819,8 +991,8 @@ void timerCallBack()
   } else if (current->cb_Cmd==CB_RESET) {
     SOF();
     sendRecieveNParse();
-    SET_O;
-    SE_0;
+    setGPIOModeOutput();
+    setDMLowDPLow();
     current->cmdTimeOut  =   31;
     current->cb_Cmd         =   CB_WAIT0;
   } else if (current->cb_Cmd==CB_WAIT0) {
@@ -836,7 +1008,7 @@ void timerCallBack()
       current->cmdTimeOut--;
     } else {
       sendRecieveNParse();
-      current->wires_last_state = READ_BOTH_PINS>>8;
+      current->wires_last_state = GPIOReadBothPins()>>8;
       current->bComplete     = 1;
     }
   } else if (current->cb_Cmd==CB_POWER) {
@@ -847,9 +1019,9 @@ void timerCallBack()
       SOF();
       SOF();
     #else
-      SET_O;
-      SE_J;
-      SET_I;
+      setGPIOModeOutput();
+      setDMHighDPLow();
+      setGPIOModeInput();
       current->cmdTimeOut  =    2;
       current->cb_Cmd  = CB_WAIT1;
     #endif
@@ -1318,25 +1490,26 @@ void IRAM_ATTR setPins(int DPPin,int DMPin)
 {
   DP_PIN = DPPin;
   DM_PIN = DMPin;
-  int diff = DPPin - DMPin;
-  if(abs(diff)>7) {
-    printf("PIN DIFFERENCE MUST BE LESS THAN 8!\n");
-    return;
-  }
-  int MIN_PIN = (DPPin<DMPin)?DPPin:DMPin;
 
-  DM_PIN_M   = (1 << DMPin);
-  DP_PIN_M    = (1 << DPPin);
-  RD_MASK    = (1<<DPPin)|(1<<DMPin);
+  int MIN_PIN = (DPPin<DMPin)?DPPin:DMPin; // min(DPPin, DMPin)
 
-  RD_SHIFT = MIN_PIN;
-  M_ONE = 1<<(DM_PIN-MIN_PIN);
-  P_ONE = 1<<(DP_PIN-MIN_PIN);
+  pinOffset = DPPin >= 32 ? 32 : 0;
+
+  setGPIORail();
+
+  DM_PIN_M   = ((uint32_t)1 << (DMPin-pinOffset));
+  DP_PIN_M   = ((uint32_t)1 << (DPPin-pinOffset));
+  RD_MASK    = DM_PIN_M|DP_PIN_M;
+
+  RD_SHIFT = MIN_PIN-pinOffset;
+  // distance between pins
+  M_ONE = ((uint32_t)1 << (DM_PIN-MIN_PIN));
+  P_ONE = ((uint32_t)1 << (DP_PIN-MIN_PIN));
 
 }
 
 
-sUsbContStruct  current_usb[NUM_USB];
+sUsbCont_t  current_usb[NUM_USB];
 
 
 int checkPins(int dp,int dm)
@@ -1345,16 +1518,27 @@ int checkPins(int dp,int dm)
   if( dp<0 || dm < 0 ) return 0;
 
   if(diff>7||diff==0) {
-    printf("Diff not in [1-7] range: %d (%d-%d)\n", diff, dp, dm );
+    printf("ERROR: Diff not in [1-7] range: %d (%d-%d)\n", diff, dp, dm );
     return 0;
   }
 
-  if( dp<8 || dp>31) {
-    printf("WARN: Dp not in [8-31] range: [%d]\n", dp );
+  int min_pin = 8;
+
+  // On ESP32, pins under 8 handle boot control, serial, spi flash
+  #if defined CONFIG_IDF_TARGET_ESP32 || defined CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S3
+    min_pin = 8;
+  #elif defined CONFIG_IDF_TARGET_ESP32P4
+    min_pin = 0;
+  #elif defined CONFIG_IDF_TARGET_ESP32C3
+    min_pin = 8;
+  #endif
+
+  if( dp<min_pin || dp>=SOC_GPIO_PIN_COUNT) {
+    printf("WARN: Dp not in [8-%d] range: [%d]\n", SOC_GPIO_PIN_COUNT, dp );
     return 0;
   }
-  if( dm<8 || dm>31) {
-    printf("WARN: Dm not in [8-31] range: [%d]\n", dp );
+  if( dm<min_pin || dm>=SOC_GPIO_PIN_COUNT) {
+    printf("WARN: Dm not in [8-%d] range: [%d]\n", SOC_GPIO_PIN_COUNT, dm );
     return 0;
   }
 
@@ -1373,9 +1557,13 @@ int64_t get_system_time_us()
 float testDelay6(float freq_MHz)
 {
   // 6 bits must take 4.0 uSec
+  #define COUNT_BITS 6.0f
   #define SEND_BITS 120
   #define REPS      40
-  float res = 1;
+
+  const uint32_t sbr = (SEND_BITS*REPS);
+
+  //float res = 1;
   transmit_NRZI_buffer_cnt = 0;
 
   for(int k=0;k<SEND_BITS/2;k++) {
@@ -1390,11 +1578,11 @@ float testDelay6(float freq_MHz)
   }
 
   uint32_t stim =  get_system_time_us()- stimb;
-  freq_MHz = 1.0f;
-  res = stim*6.0/freq_MHz/(SEND_BITS*REPS);
-  printf("%d bits in %f uSec %f MHz  6 ticks in %f uS\n",(SEND_BITS*REPS),stim/(float)freq_MHz,(SEND_BITS*REPS)*freq_MHz/stim,stim*6.0/freq_MHz/(SEND_BITS*REPS));
+  //freq_MHz = 1.0f;
+  float elapsed_time_us = stim*COUNT_BITS/1.0f/sbr;
+  printf("%lu bits in %02.1f uSec %f MHz  6 ticks in %.4f uS\n", sbr, stim/(float)freq_MHz, sbr*1.0f/stim, elapsed_time_us);
 
-  return res;
+  return elapsed_time_us;
 }
 
 uint8_t arr[0x200];
@@ -1403,11 +1591,15 @@ uint8_t arr[0x200];
 
 void setupGPIO( int pin )
 {
-  gpio_pad_select_gpio( pin );
+  gpio_reset_pin( pin );
+  esp_rom_gpio_pad_select_gpio( pin );
   gpio_set_direction( pin , GPIO_MODE_OUTPUT);
   gpio_set_level( pin , 0);
   gpio_set_direction( pin , GPIO_MODE_INPUT);
   gpio_pulldown_en( pin );
+  // or ...
+  gpio_set_direction(pin, GPIO_MODE_INPUT_OUTPUT);
+  gpio_set_pull_mode(pin, GPIO_PULLDOWN_ONLY);
 }
 
 
@@ -1444,11 +1636,11 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
 
     if(checkPins(current->DP,current->DM)) {
 
-      printf("USB#%d (pins %d %d) is OK!\n", k, current->DP, current->DM );
+      printf("USB#%d (pins %lu %lu) is OK!\n", k, current->DP, current->DM );
 
       current->selfNum           = k;
       current->flags_new         = 0x0;
-      current->flags 		         = 0x0;
+      current->flags              = 0x0;
       current->in_data_flip_flop = 0;
       current->bComplete         = 1;
       current->cmdTimeOut        = 0;
@@ -1467,18 +1659,19 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
 
       // TEST
       setPins(current->DP,current->DM);
-      printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
-      SET_O;
-      SE_0;
-      SE_J;
-      SE_0;
-      SET_I;
-      printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
+      printf("PINS RD_MASK/RD_SHIFT = 0x%lx / 0x%lx\n", RD_MASK, RD_SHIFT);
+      printf("READ_BOTH_PINS = %04x\n",(uint16_t)GPIOReadBothPins());
+      setGPIOModeOutput();
+      setDMLowDPLow();
+      setDMHighDPLow();
+      setDMLowDPLow();
+      setGPIOModeInput();
+      printf("READ_BOTH_PINS = %04x\n",(uint16_t)GPIOReadBothPins());
       gpio_set_direction(current->DP, GPIO_MODE_OUTPUT);
       gpio_set_direction(current->DM, GPIO_MODE_OUTPUT);
-      printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
-      SET_I;
-      printf("READ_BOTH_PINS = %04x\n",READ_BOTH_PINS);
+      printf("READ_BOTH_PINS = %04x\n",(uint16_t)GPIOReadBothPins());
+      setGPIOModeInput();
+      printf("READ_BOTH_PINS = %04x\n",(uint16_t)GPIOReadBothPins());
 
       if(!calibrated) {
         //calibrate delay divide 2
@@ -1489,7 +1682,7 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         rtc_cpu_freq_config_t  out_config;
 
         rtc_clk_cpu_freq_get_config(&out_config);
-        printf("cpu freq = %d MHz\n",out_config.freq_mhz);
+        printf("cpu freq = %lu MHz\n",out_config.freq_mhz);
 
         TM_OUT = out_config.freq_mhz/2;
 
@@ -1521,13 +1714,13 @@ void initStates(int DP0,int DM0,int DP1,int DM1,int DP2,int DM2,int DP3,int DM3)
         }
         TRANSMIT_TIME_DELAY = TRANSMIT_TIME_DELAY_OPT+DELAY_CORR;
         setCPUDelay( TRANSMIT_TIME_DELAY );
-        printf( "TRANSMIT_TIME_DELAY = %d time = %f error = %f%% \n", TRANSMIT_TIME_DELAY, cS_opt, (cS_opt-OPT_TIME)/OPT_TIME*100 );
+        printf( "TRANSMIT_TIME_DELAY = %d, time = %f, error margin = %f%% \n", TRANSMIT_TIME_DELAY, cS_opt, (cS_opt-OPT_TIME)/OPT_TIME*100 );
       }
     } else {
       if( current->DP == -1 && current->DM == -1 ) {
         printf( "USB#%d is disabled by user configuration\n", k );
       } else {
-        printf( "USB#%d (pins %d %d) has errors and will be disabled !\n", k, current->DP, current->DM );
+        printf( "USB#%d (pins %lu %lu) has errors and will be disabled !\n", k, current->DP, current->DM );
       }
     }
   }
@@ -1554,10 +1747,12 @@ uint8_t usbGetFlags(int _usb_num)
 
 
 
-void IRAM_ATTR usb_process()
+void usb_process()
 {
   #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
     cpu_ll_enable_cycle_count();
+  #elif defined CONFIG_IDF_TARGET_ESP32P4
+    //cpu_ll_set_cycle_count(0);
   #endif
   for(int k=0;k<NUM_USB;k++) {
     current = &current_usb[k];
@@ -1576,24 +1771,28 @@ void printState()
   static int cntl = 0;
   cntl++;
   int ref = cntl%NUM_USB;
-  sUsbContStruct * pcurrent = &current_usb[ref];
+  sUsbCont_t * pcurrent = &current_usb[ref];
   if(!pcurrent->isValid) return;
-  if((cntl%800)<NUM_USB) {
-    #ifdef DEBUG_ALL
-      printf("USB%d: Ack=%d Nack=%d %02x pcurrent->cb_Cmd=%d  state=%d epCount=%d --",
-        cntl%NUM_USB, pcurrent->counterAck,
-        pcurrent->counterNAck,
-        pcurrent->wires_last_state,
-        pcurrent->cb_Cmd,
-        pcurrent->fsm_state,
-        pcurrent->epCount
-      );
-      for(int k=0;k<20;k++) {
-        printf("%04x ", debug_buff[k]);
+
+  #ifdef DEBUG_ALL
+    if((cntl%800)<NUM_USB) {
+      if( pcurrent->counterNAck > 0 ) {
+        printf("USB%d: Ack=%d Nack=%d %02x pcurrent->cb_Cmd=%d  state=%d epCount=%d --",
+          cntl%NUM_USB, pcurrent->counterAck,
+          pcurrent->counterNAck,
+          pcurrent->wires_last_state,
+          pcurrent->cb_Cmd,
+          pcurrent->fsm_state,
+          pcurrent->epCount
+        );
+        for(int k=0;k<20;k++) {
+          printf("%04x ", debug_buff[k]);
+        }
+        printf("\n");
+        pcurrent->counterNAck--;
       }
-      printf("\n");
-    #endif
-  }
+    }
+  #endif
 
   if( pcurrent->ufPrintDesc == 0 ) {
     static bool connected[4] = {false, false, false, false};
@@ -1603,8 +1802,10 @@ void printState()
         if( onDisconnectCB )
           onDisconnectCB( ref );
         #ifdef DEBUG_ALL
-        else
+        else {
           printf("USB#%d disconnected\n", ref);
+          pcurrent->counterNAck = pcurrent->counterAck = 0;
+        }
         #endif
       }
     }
@@ -1721,5 +1922,4 @@ void printState()
 }
 
 
-#pragma GCC diagnostic pop
 

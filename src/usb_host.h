@@ -1,12 +1,18 @@
 #ifndef  USB_HOST_H
 #define USB_HOST_H
 
+#include <sdkconfig.h>
+#include "esp_idf_version.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include "soc/timer_group_struct.h"
-#include "driver/periph_ctrl.h"
-#include "driver/timer.h"
+
+#if !defined ESP_IDF_VERSION_MAJOR || (defined ESP_IDF_VERSION_MAJOR && (ESP_IDF_VERSION_MAJOR < 5 || (ESP_IDF_VERSION_MAJOR == 5 && ESP_IDF_VERSION_MINOR < 5)))
+  #error "This espressif core is too old, minimum 5.5 required, use an earlier version of this library for older core versions"
+#endif
+
+#include "driver/gptimer.h" // general purpose timer
 #include "driver/gpio.h"
 #include "esp32-hal-log.h"
 
@@ -14,15 +20,6 @@
   #define DEBUG_ALL
 #endif
 
-
-#if defined ESP_IDF_VERSION_MAJOR && ESP_IDF_VERSION_MAJOR >= 4
-  #define USE_NATIVE_GROUP_TIMERS
-#else
-  #warning "Using software group timers"
-#endif
-
-#define TIMER_DIVIDER         2  //  Hardware timer clock divider
-#define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)  // convert counter value to seconds
 #define TIMER_INTERVAL0_SEC   (0.001) // sample test interval for the first timer
 // non configured device -  must be zero
 #define  ZERO_USB_ADDRESS     0
@@ -62,6 +59,8 @@ void setCPUDelay( uint8_t ticks );
 // keyboard led controls
 uint8_t usbGetFlags(int _usb_num);
 void usbSetFlags( int _usb_num,uint8_t flags );
+
+int64_t get_system_time_us();
 
 // Device Descriptor
 typedef struct
