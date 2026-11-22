@@ -9,6 +9,14 @@ with [esp32_usb_soft_host](https://github.com/sdima1357/esp32_usb_soft_host)
 
 Some parts of the code (e.g. the timer group isr calls) have been regressed to fit esp-idf 3.3 needs but it has been tested up to 4.4.2.
 
+Compatibility
+-------------
+
+This project requires Espressif [esp32](https://github.com/espressif/arduino-esp32) library:
+- Version `2.0.17` (which is the latest `2.x` release) is recommended which has been verified to work.
+- This project will _not_ compile with the `3.x` versions of the library.
+
+
 USB Low Speed is slow
 ---------------------
 
@@ -25,10 +33,14 @@ A callback can be attached both for detection and events.
 Hardware support
 ----------------
 
-This library has been tested on ESP32-Wroom/Wrover and works fine as long as the pins aren't
-shared (beware of the psram pins!).
+| Microcontroller | Compatibility   | Comments
+|-----------------|-----------------|----------
+| **ESP32**       | Works           | Tested on ESP32-Wroom/Wrover and works fine as long as the pins aren't shared (beware of the psram pins!). |
+| **ESP32-S2**    | Partial support | |
+| **ESP32-S3**    | Works           | Tested on [Adafruit ESP32-S3 TFT Feather](https://learn.adafruit.com/adafruit-esp32-s3-tft-feather). |
+| **ESP32-C3**    | Unknown         | Untested. |
+| **ESP32-P4**    | Unstable        | Tested on M5Stack Tab5 PortA, works erratically, needs improvement. |
 
-It has partial support for ESP32-S2, and remains untested on ESP32-S3, ESP32-P4 && ESP32-C3.
 
 Limitations
 -----------
@@ -36,6 +48,7 @@ Limitations
 As of v0.2.0, only gptimers are used, and the library will error if the esp-idf version (5.5+) doesn't support it.
 
 Use ESP32-UBS-Soft-Host [v0.1.5](https://github.com/tobozo/ESP32-USB-Soft-Host/releases/tag/v0.1.5) if your esp-idf version is < 5.5.
+
 
 
 Known working HID devices:
