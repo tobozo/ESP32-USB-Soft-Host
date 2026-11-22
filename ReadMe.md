@@ -39,6 +39,16 @@ Hardware support
 | **ESP32-S2**    | Partial support | |
 | **ESP32-S3**    | Works           | Tested on [Adafruit ESP32-S3 TFT Feather](https://learn.adafruit.com/adafruit-esp32-s3-tft-feather). |
 | **ESP32-C3**    | Unknown         | Untested. |
+| **ESP32-P4**    | Unstable        | Tested on M5Stack Tab5 PortA, works erratically, needs improvement. |
+
+
+Limitations
+-----------
+
+As of v0.2.0, only gptimers are used, and the library will error if the esp-idf version (5.5+) doesn't support it.
+
+Use ESP32-UBS-Soft-Host [v0.1.5](https://github.com/tobozo/ESP32-USB-Soft-Host/releases/tag/v0.1.5) if your esp-idf version is < 5.5.
+
 
 
 Known working HID devices:

@@ -11,18 +11,16 @@
  *
 \*/
 
-
-// recursive repeat
-template <size_t N> inline void nop_pad()
+template <size_t N> __attribute__((always_inline)) inline void nop_pad2()
 {
-  nop_pad<N-1>();
-  asm volatile ("nop");
+  // ASM repeat "nop" N times (using memory to prevent cpp optimizations)
+  __asm__ __volatile__(".rept %0\n\t nop \n\t .endr" :: "i"(N) : "memory");
 }
 // zero nop case
-template <> inline void nop_pad<0>()  { }
+template <> __attribute__((always_inline)) inline void nop_pad2<0>() { }
 
 // shorthand macro for function generation
-#define nop(opnum) void IRAM_ATTR op##opnum(){nop_pad<opnum>();}
+#define nop(opnum) void IRAM_ATTR op##opnum(){nop_pad2<opnum>();}
 
 nop(0x00) nop(0x01) nop(0x02) nop(0x03) nop(0x04) nop(0x05) nop(0x06) nop(0x07) nop(0x08) nop(0x09) nop(0x0a) nop(0x0b) nop(0x0c) nop(0x0d) nop(0x0e) nop(0x0f)
 nop(0x10) nop(0x11) nop(0x12) nop(0x13) nop(0x14) nop(0x15) nop(0x16) nop(0x17) nop(0x18) nop(0x19) nop(0x1a) nop(0x1b) nop(0x1c) nop(0x1d) nop(0x1e) nop(0x1f)
