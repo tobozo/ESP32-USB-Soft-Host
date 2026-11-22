@@ -1,5 +1,5 @@
 #define DEBUG_ALL
-#define FORCE_TEMPLATED_NOPS
+//#define FORCE_TEMPLATED_NOPS
 #include <ESP32-USB-Soft-Host.h>
 
 #if defined ARDUINO_LOLIN_S3 || defined ARDUINO_LOLIN_S3_PRO
@@ -84,7 +84,34 @@
   #define DP_P3  13 // ok ESP32-S2-Kaluga
   #define DM_P3  12 // ok ESP32-S2-Kaluga
 
+#elif defined ARDUINO_M5STACK_TAB5
+
+  #include <M5Unified.h> // Tab5 need some registers poked to power the PortA
+
+  #define PROFILE_NAME "M5Tab5 / ESP32 P4"
+  #define DP_P0   53 // porta
+  #define DM_P0   54 // porta
+  #define DP_P1   -1//47 // M-Bus (free)
+  #define DM_P1   -1//48 // M-Bus (free)
+  #define DP_P2   -1//17 // M-Bus (free)
+  #define DM_P2   -1//16 // M-Bus (PC_IN)
+  #define DP_P3   -1//19 // M-Bus (MOSI)
+  #define DM_P3   -1//18 // M-Bus (MISO)
+
+#elif defined ARDUINO_M5STACK_CORES3
+
+  #define PROFILE_NAME "M5Stack CoreS3 (PORTB)"
+  #define DP_P0   9 // portb
+  #define DM_P0   8 // portb
+  #define DP_P1  -1 // 1 // porta
+  #define DM_P1  -1 // 2 // porta
+  #define DP_P2  -1 // 18 // portc
+  #define DM_P2  -1 // 17 // portc
+  #define DP_P3  -1
+  #define DM_P3  -1
+
 #else
+
   // default pins tested on ESP32-Wroom
   #define PROFILE_NAME "Default Wroom"
   #define DP_P0  16  // always enabled
@@ -130,6 +157,13 @@ static void my_USB_PrintCB(uint8_t usbNum, uint8_t byte_depth, uint8_t* data, ui
   printf("\n");
 }
 
+
+static void onDisconnectCb( uint8_t portnum )
+{
+  printf("USB#%d disconnected\n", portnum);
+}
+
+
 usb_pins_config_t USB_Pins_Config =
 {
   DP_P0, DM_P0,
@@ -142,9 +176,16 @@ usb_pins_config_t USB_Pins_Config =
 void setup()
 {
   //Serial.begin(115200);
-  delay(5000);
+
+  #if defined ARDUINO_M5STACK_TAB5
+    M5.begin();
+    // Explicitly enable 5V on M5-Bus (along with HY2.0-4P & 2.54-10P)
+    M5.Power.setExtOutput(true, m5::ext_port_mask_t::ext_PA);
+  #endif
+
+  delay(1000);
+
   printf("USB Soft Host Test for %s\n", PROFILE_NAME );
-  printf("TIMER_BASE_CLK: %d, TIMER_DIVIDER:%d, TIMER_SCALE: %d\n", TIMER_BASE_CLK, TIMER_DIVIDER, TIMER_SCALE );
   // USH.setTaskCore( 0 );
   // USH.setBlinkPin( (gpio_num_t) 2 );
   // USH.setTaskPriority( 16 );
@@ -152,6 +193,7 @@ void setup()
   USH.setOnIfaceDescCb( Default_USB_IfaceDescCb );
   USH.setOnHIDDevDescCb( Default_USB_HIDDevDescCb );
   USH.setOnEPDescCb( Default_USB_EPDescCb );
+  USH.setOndisconnectCb( onDisconnectCb );
 
   USH.init( USB_Pins_Config, my_USB_DetectCB, my_USB_PrintCB );
 }
