@@ -28,7 +28,14 @@ Hardware support
 This library has been tested on ESP32-Wroom/Wrover and works fine as long as the pins aren't
 shared (beware of the psram pins!).
 
-It has partial support for ESP32-S2, and remains untested on ESP32-S3 && ESP32-C3.
+It has partial support for ESP32-S2, and remains untested on ESP32-S3, ESP32-P4 && ESP32-C3.
+
+Limitations
+-----------
+
+As of v0.2.0, only gptimers are used, and the library will error if the esp-idf version (5.5+) doesn't support it.
+
+Use ESP32-UBS-Soft-Host [v0.1.5](https://github.com/tobozo/ESP32-USB-Soft-Host/releases/tag/v0.1.5) if your esp-idf version is < 5.5.
 
 
 Known working HID devices:
