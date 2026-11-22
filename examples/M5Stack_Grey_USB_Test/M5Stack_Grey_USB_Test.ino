@@ -1,8 +1,9 @@
 #if !defined ARDUINO_M5Stack_Core_ESP32
-#error "This sketch only works with M5Stack Core classic!"
+#warning "This sketch only works with M5Stack Core classic!"
 #endif
 
-#include <ESP32-Chimera-Core.h> // http://librarymanager#esp32-chimera-core + http://librarymanager#lovyangfx
+//#include <ESP32-Chimera-Core.h> // http://librarymanager#esp32-chimera-core + http://librarymanager#lovyangfx
+#include <M5Unified.h> // http://librarymanager#M5Unified
 #include <ESP32-USBSoftHost.hpp> // https://github.com/tobozo/ESP32-USB-Soft-Host
 #include "usbkbd.h" // KeyboardReportParser
 #include "C64_UI.h" // fancy keyboard demo
@@ -10,9 +11,17 @@
 
 // Only one USB port is open in this demo!
 // Pins configuration for this USB Soft Host:
-// [OK] 16/17 : M5Bottom pins for RX2/TX2
+// [OK] 16/17 : M5Bottom pins for RX2/TX2 on M5Stack Grey
+// [OK] 9/8 : PORT-C pins on M5CoreS3
+
+// #define DP_P0  9  // always enabled
+// #define DM_P0  8  // always enabled
+
 #define DP_P0  16  // always enabled
 #define DM_P0  17  // always enabled
+
+//#define DP_P0  16  // always enabled
+//#define DM_P0  17  // always enabled
 #define DP_P1  -1
 #define DM_P1  -1
 #define DP_P2  -1
