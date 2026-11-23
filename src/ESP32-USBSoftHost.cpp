@@ -217,21 +217,24 @@ bool USB_SOFT_HOST::_init( usb_pins_config_t pconf )
 
   static portMUX_TYPE my_spinlock = portMUX_INITIALIZER_UNLOCKED;
 
-  for(uint8_t i=0;i<0xff;i++)
-  {
-    auto cpuDelay = nops[i];
-    // using asm "memory" trick +lock to prevent the compiler from optimizing the benchmark
-    portENTER_CRITICAL(&my_spinlock);
-    asm volatile("" ::: "memory");
-    auto start = esp_cpu_get_cycle_count();
-    cpuDelay();
-    auto end = esp_cpu_get_cycle_count()/*-cycle_count_cycles*/;
-    asm volatile("" ::: "memory");
-    portEXIT_CRITICAL(&my_spinlock);
-    uint64_t elapsed = (end-start);
-    //float avg = elapsed/1000.0f;
-    printf("Nop[%02x] ~= %llu cycles\n", i, elapsed);
-  }
+  #if defined USE_TEMPLATED_NOPS
+    for(uint8_t i=0;i<0xff;i++)
+    {
+      auto cpuDelay = nops[i];
+      // using asm "memory" trick +lock to prevent the compiler from optimizing the benchmark
+      portENTER_CRITICAL(&my_spinlock);
+      asm volatile("" ::: "memory");
+      auto start = esp_cpu_get_cycle_count();
+      cpuDelay();
+      auto end = esp_cpu_get_cycle_count()/*-cycle_count_cycles*/;
+      asm volatile("" ::: "memory");
+      portEXIT_CRITICAL(&my_spinlock);
+      uint64_t elapsed = (end-start);
+      //float avg = elapsed/1000.0f;
+      printf("Nop[%02x] ~= %llu cycles\n", i, elapsed);
+    }
+  #endif
+
 
   Serial.println("Setting up pins");
 
