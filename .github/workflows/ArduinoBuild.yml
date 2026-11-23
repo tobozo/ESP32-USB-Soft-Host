@@ -29,6 +29,7 @@ jobs:
 
           - arduino-boards-fqbn: esp32:esp32:m5stack_cores3
             board-name: m5cores3
+            required-libraries: M5Unified
 
           - arduino-boards-fqbn: esp32:esp32:esp32c3
             board-name: esp32c3
@@ -50,7 +51,7 @@ jobs:
           arduino-board-fqbn: ${{ matrix.arduino-boards-fqbn }}
           platform-url: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           sketch-names: USB_Test.ino
-          # required-libraries: ${{ matrix.required-libraries }}
+          required-libraries: ${{ matrix.required-libraries }}
           #set-build-path: true # build in the sketch folder
           #build-properties: ${{ toJson(matrix.build-properties) }}
 
