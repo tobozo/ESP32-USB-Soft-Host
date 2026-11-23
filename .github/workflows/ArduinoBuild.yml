@@ -1,0 +1,57 @@
+name: ArduinoBuild
+on:
+  push: # see: https://help.github.com/en/actions/reference/events-that-trigger-workflows#pull-request-event-pull_request
+    paths:
+    - '**.ino'
+    - '**.cpp'
+    - '**.h'
+    - '**ArduinoBuild.yml'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Tes - ${{ matrix.board-name }}
+
+    runs-on: ubuntu-26.04
+
+    strategy:
+      matrix:
+
+        board-name: [esp32, esp32s2, m5cores3, esp32c3, m5tab5 ]
+
+        include:
+          - arduino-boards-fqbn: esp32:esp32:esp32
+            board-name: esp32
+
+          - arduino-boards-fqbn: esp32:esp32:esp32s2
+            board-name: esp32s2
+
+          - arduino-boards-fqbn: esp32:esp32:m5stack_cores3
+            board-name: m5cores3
+
+          - arduino-boards-fqbn: esp32:esp32:esp32c3
+            board-name: esp32c3
+
+          - arduino-boards-fqbn: esp32:esp32:m5stack_tab5
+            board-name: m5tab5
+
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Compile all examples
+        uses: ArminJo/arduino-test-compile@v3
+        with:
+          arduino-board-fqbn: ${{ matrix.arduino-boards-fqbn }}
+          platform-url: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          sketch-names: USB_Test.ino
+          # required-libraries: ${{ matrix.required-libraries }}
+          #set-build-path: true # build in the sketch folder
+          #build-properties: ${{ toJson(matrix.build-properties) }}
+
+
