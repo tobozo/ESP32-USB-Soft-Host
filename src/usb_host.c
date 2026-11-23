@@ -366,7 +366,8 @@ void (*cpuDelay)() = NULL;
   #if defined DEBUG_ALL
     #define DEBUG_OPCODE printf
   #else
-    #define DEBUG_OPCODE (void)
+    inline void NullLoggerCallback( [[maybe_unused]] const char* format, ...) {  }
+    #define DEBUG_OPCODE NullLoggerCallback
   #endif
 
   void makeOpcodes( uint8_t* ptr, uint8_t ticks )
