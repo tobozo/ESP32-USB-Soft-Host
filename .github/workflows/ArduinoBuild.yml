@@ -11,7 +11,7 @@ on:
 
 jobs:
   build:
-    name: Build Tes - ${{ matrix.board-name }}
+    name: Build Test - ${{ matrix.board-name }}
 
     runs-on: ubuntu-26.04
 
