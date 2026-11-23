@@ -1750,11 +1750,6 @@ uint8_t usbGetFlags(int _usb_num)
 
 void usb_process()
 {
-  #if CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
-    cpu_ll_enable_cycle_count();
-  #elif defined CONFIG_IDF_TARGET_ESP32P4
-    //cpu_ll_set_cycle_count(0);
-  #endif
   for(int k=0;k<NUM_USB;k++) {
     current = &current_usb[k];
     if(current->isValid) {
