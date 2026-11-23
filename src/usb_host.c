@@ -237,7 +237,7 @@ USH_STATIC void setGPIORail()
   #if SOC_GPIO_PIN_COUNT > 31
     memcpy(snd, pinOffset==0 ? snd0 : snd1, sizeof(volatile uint32_t *)*8);
   #else
-    memcpy(snd, snd0 sizeof(volatile uint32_t *)*8);
+    memcpy(snd, snd0, sizeof(volatile uint32_t *)*8);
   #endif
 }
 
