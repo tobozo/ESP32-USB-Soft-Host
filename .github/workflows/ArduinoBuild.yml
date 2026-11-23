@@ -29,13 +29,13 @@ jobs:
 
           - arduino-boards-fqbn: esp32:esp32:m5stack_cores3
             board-name: m5cores3
-            required-libraries: M5Unified
 
           - arduino-boards-fqbn: esp32:esp32:esp32c3
             board-name: esp32c3
 
           - arduino-boards-fqbn: esp32:esp32:m5stack_tab5
             board-name: m5tab5
+            required-libraries: M5Unified
 
       fail-fast: false
 
