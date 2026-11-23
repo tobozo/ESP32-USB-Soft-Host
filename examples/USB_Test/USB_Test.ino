@@ -61,7 +61,7 @@
   #define DM_P2  -1
   #define DP_P3  -1
   #define DM_P3  -1
-#elif CONFIG_IDF_TARGET_ESP32C3 || defined ESP32C3
+#elif defined CONFIG_IDF_TARGET_ESP32C3
   #define PROFILE_NAME "ESP32 C3 Dev module"
   #define DP_P0   6
   #define DM_P0   8
@@ -71,7 +71,7 @@
   #define DM_P2  -1
   #define DP_P3  -1
   #define DM_P3  -1
-#elif CONFIG_IDF_TARGET_ESP32S2 || defined CONFIG_IDF_TARGET_ESP32S2
+#elif defined CONFIG_IDF_TARGET_ESP32S2
   #define LOAD_TINYUSB
   #define PROFILE_NAME "ESP32 S2 Dev module"
   // [/!\] 20/19 = (USB RS/TS), might be unresponsive
@@ -83,11 +83,8 @@
   #define DM_P2  10 // ok ESP32-S2-Kaluga
   #define DP_P3  13 // ok ESP32-S2-Kaluga
   #define DM_P3  12 // ok ESP32-S2-Kaluga
-
 #elif defined ARDUINO_M5STACK_TAB5
-
   #include <M5Unified.h> // Tab5 need some registers poked to power the PortA
-
   #define PROFILE_NAME "M5Tab5 / ESP32 P4"
   #define DP_P0   53 // porta
   #define DM_P0   54 // porta
@@ -97,9 +94,7 @@
   #define DM_P2   -1//16 // M-Bus (PC_IN)
   #define DP_P3   -1//19 // M-Bus (MOSI)
   #define DM_P3   -1//18 // M-Bus (MISO)
-
 #elif defined ARDUINO_M5STACK_CORES3
-
   #define PROFILE_NAME "M5Stack CoreS3 (PORTB)"
   #define DP_P0   9 // portb
   #define DM_P0   8 // portb
@@ -109,9 +104,7 @@
   #define DM_P2  -1 // 17 // portc
   #define DP_P3  -1
   #define DM_P3  -1
-
-#else
-
+#else // defined CONFIG_IDF_TARGET_ESP32
   // default pins tested on ESP32-Wroom
   #define PROFILE_NAME "Default Wroom"
   #define DP_P0  16  // always enabled
@@ -177,7 +170,7 @@ void setup()
 {
   //Serial.begin(115200);
 
-  #if defined ARDUINO_M5STACK_TAB5
+  #if __has_include(<M5Unified.h>)
     M5.begin();
     // Explicitly enable 5V on M5-Bus (along with HY2.0-4P & 2.54-10P)
     M5.Power.setExtOutput(true, m5::ext_port_mask_t::ext_PA);

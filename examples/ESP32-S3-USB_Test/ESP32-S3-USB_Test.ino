@@ -9,7 +9,7 @@
 // USB Host Part (handles detection and input from the physical keyboard)
 #define DP_P0  15  // USB Host Data+ Pin (must be an analog pin)
 #define DM_P0  16  // USB Host Data- Pin (must be an analog pin)
-#define FORCE_TEMPLATED_NOPS
+
 #include <ESP32-USB-Soft-Host.h>
 
 // Device Part (handles HID device emulation)
@@ -75,7 +75,7 @@ void setup()
   Serial.begin(115200);
   delay(5000);
   printf("ESP32-S3 Keylogger\n" );
-  printf("TIMER_BASE_CLK: %d, TIMER_DIVIDER:%d, TIMER_SCALE: %d\n", TIMER_BASE_CLK, TIMER_DIVIDER, TIMER_SCALE );
+
   // USH.setTaskCore( 0 );
   // USH.setBlinkPin( (gpio_num_t) 2 );
   // USH.setTaskPriority( 16 );
