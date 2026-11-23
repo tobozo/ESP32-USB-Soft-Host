@@ -13,6 +13,11 @@
 #endif
 
 #include "driver/gptimer.h" // general purpose timer
+
+#if __has_include("soc/gpio_periph.h")
+  #include "soc/gpio_periph.h" // for GPIO_PIN_MUX_REG
+#endif
+
 #include "driver/gpio.h"
 #include "esp32-hal-log.h"
 
